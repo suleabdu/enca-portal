@@ -1,0 +1,16 @@
+[build]
+  publish = "."
+
+# Proxies every /api/* call from the browser straight to the Python backend
+# on Render. This keeps the frontend and API on the same origin from the
+# browser's point of view (no CORS), and is also what avoids the kind of
+# sandboxed-redirect behaviour that got the old Apps Script URL blocked on
+# some phones/networks.
+#
+# Replace the URL below with your actual Render service URL once it exists,
+# then commit + push — Netlify redeploys automatically.
+[[redirects]]
+  from = "/api/*"
+  to = "https://YOUR-RENDER-BACKEND-URL.onrender.com/api/:splat"
+  status = 200
+  force = true

@@ -1,0 +1,14 @@
+# Secrets — never commit these
+client_secret.json
+*.env
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS/editor noise
+.DS_Store
+.vscode/

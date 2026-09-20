@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ENCA Digital Training Portal</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ============================= LOGIN SCREEN ============================= -->
+  <div id="loginScreen" class="screen login-screen">
+    <div class="login-card">
+      <div class="brand">
+        <div class="brand-mark">ENCA</div>
+        <div class="brand-sub">Digital Training Portal</div>
+      </div>
+
+      <form id="loginForm" autocomplete="off">
+        <label class="field-label" for="username">Username</label>
+        <input class="field-input" type="text" id="username" placeholder="Enter your username" required>
+
+        <label class="field-label" for="password">Password</label>
+        <input class="field-input" type="password" id="password" placeholder="Enter your password" required>
+
+        <button type="submit" class="btn btn-primary btn-block" id="loginBtn">Log In</button>
+        <div id="loginError" class="error-text" hidden></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============================== DASHBOARD =============================== -->
+  <div id="dashboardScreen" class="screen dashboard-screen" hidden>
+
+    <header class="topbar">
+      <div class="topbar-brand">ENCA Digital Training Portal</div>
+      <button id="logoutBtn" class="btn btn-ghost">Log Out</button>
+    </header>
+
+    <nav class="tabbar">
+      <button class="tab-btn active" data-tab="overviewTab">Dashboard</button>
+      <button class="tab-btn" data-tab="assignmentsTab">Assignments</button>
+    </nav>
+
+    <main class="content">
+
+      <!-- ---------- Overview / Profile tab ---------- -->
+      <section id="overviewTab" class="tab-panel active">
+        <h1 class="page-title">Welcome, <span id="welcomeName">Student</span></h1>
+        <div class="card-grid">
+          <div class="info-card">
+            <div class="info-label">Reg ID</div>
+            <div class="info-value" id="infoRegId">—</div>
+          </div>
+          <div class="info-card">
+            <div class="info-label">Name</div>
+            <div class="info-value" id="infoName">—</div>
+          </div>
+          <div class="info-card">
+            <div class="info-label">Gender</div>
+            <div class="info-value" id="infoGender">—</div>
+          </div>
+          <div class="info-card">
+            <div class="info-label">Course</div>
+            <div class="info-value" id="infoCourse">—</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- Assignments tab ---------- -->
+      <section id="assignmentsTab" class="tab-panel">
+        <h1 class="page-title">Your Assignments</h1>
+        <div id="assignmentsStatus" class="muted-text">Loading assignments…</div>
+        <div id="assignmentsList" class="assignment-list"></div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ======================== SUBMISSION MODAL ======================== -->
+  <div id="submitModal" class="modal-backdrop" hidden>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>Submit Assignment</h2>
+        <button id="closeModalBtn" class="modal-close" aria-label="Close">&times;</button>
+      </div>
+
+      <form id="submitForm">
+        <label class="field-label">Course</label>
+        <input class="field-input" type="text" id="modalCourse" readonly>
+
+        <div class="field-block">
+          <label class="field-label" for="modalContent">Assignment</label>
+          <div class="assignment-content-box" id="modalContent"></div>
+        </div>
+
+        <label class="field-label" for="modalDescription">Description</label>
+        <textarea class="field-input" id="modalDescription" rows="4"
+          placeholder="Add a short note about your submission (optional)"></textarea>
+
+        <label class="field-label" for="modalFile">Upload File</label>
+        <input class="field-input" type="file" id="modalFile" required>
+
+        <button type="submit" class="btn btn-primary btn-block" id="submitAssignmentBtn">Submit</button>
+        <div id="submitStatus" class="status-text" hidden></div>
+      </form>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
