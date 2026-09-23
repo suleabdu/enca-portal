@@ -14,14 +14,17 @@ just served over HTTP so a static frontend (hosted on Netlify) can call it.
 import os
 
 from flask import Flask, jsonify, request
-from flask_cors import CORS
 
 import sheets_service as svc
 
 app = Flask(__name__)
-# CORS stays on as a defensive fallback for local testing / direct calls;
-# in production the Netlify redirect proxy makes requests same-origin anyway.
-CORS(app)
+# Keep CORS enabled without requiring the optional flask-cors package.
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    return response
 
 
 @app.get("/api/health")
@@ -33,7 +36,8 @@ def health():
 def login():
     payload = request.get_json(silent=True) or {}
     try:
-        result = svc.authenticate(payload.get("username"), payload.get("password"))
+        result = svc.authenticate(payload.get(
+            "username"), payload.get("password"))
         return jsonify(result)
     except Exception as err:  # noqa: BLE001 - surface a clean message to the client
         return jsonify({"success": False, "message": f"Login error: {err}"}), 500
@@ -43,7 +47,8 @@ def login():
 def assignments():
     payload = request.get_json(silent=True) or {}
     try:
-        result = svc.get_assignments(payload.get("regId"), payload.get("studentName"))
+        result = svc.get_assignments(payload.get(
+            "regId"), payload.get("studentName"))
         return jsonify(result)
     except Exception as err:  # noqa: BLE001
         return jsonify({"success": False, "message": f"Could not load assignments: {err}"}), 500
@@ -78,7 +83,8 @@ def submit():
     file_storage = request.files.get("file")
 
     try:
-        result = svc.submit_assignment(reg_id, student_name, course, description, file_storage)
+        result = svc.submit_assignment(
+            reg_id, student_name, course, description, file_storage)
         return jsonify(result), (200 if result.get("success") else 400)
     except Exception as err:  # noqa: BLE001
         return jsonify({"success": False, "message": f"Submission failed: {err}"}), 500
