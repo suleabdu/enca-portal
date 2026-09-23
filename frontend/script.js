@@ -6,12 +6,14 @@ const API_BASE = '/api';
 let currentStudent = null;
 let currentAssignments = [];
 let activeAssignment = null;
+let currentCourseContent = [];
 
 document.addEventListener('DOMContentLoaded', function () {
   document.getElementById('loginForm').addEventListener('submit', handleLogin);
   document.getElementById('logoutBtn').addEventListener('click', handleLogout);
   document.getElementById('closeModalBtn').addEventListener('click', closeModal);
   document.getElementById('submitForm').addEventListener('submit', handleSubmitAssignment);
+  document.getElementById('closeDetailModalBtn').addEventListener('click', closeDetailModal);
 
   document.querySelectorAll('.tab-btn').forEach(function (btn) {
     btn.addEventListener('click', function () { activateTab(btn.dataset.tab); });
@@ -19,6 +21,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
   document.getElementById('submitModal').addEventListener('click', function (e) {
     if (e.target === this) closeModal();
+  });
+  document.getElementById('detailModal').addEventListener('click', function (e) {
+    if (e.target === this) closeDetailModal();
   });
 });
 
@@ -64,6 +69,7 @@ async function handleLogin(e) {
 function handleLogout() {
   currentStudent = null;
   currentAssignments = [];
+  currentCourseContent = [];
   document.getElementById('username').value = '';
   document.getElementById('password').value = '';
   document.getElementById('dashboardScreen').hidden = true;
@@ -86,6 +92,8 @@ function showDashboard() {
   document.getElementById('infoCourse').textContent = currentStudent.course || '—';
 
   loadAssignments();
+  loadCourseContent();
+  loadDashboardSummary();
 }
 
 function activateTab(tabId) {
@@ -242,4 +250,164 @@ async function handleSubmitAssignment(e) {
     btn.disabled = false;
     btn.textContent = 'Submit';
   }
+}
+
+// --------------------------------------------------------------------- //
+// Dashboard summary cards (Attendance + Performance)
+// --------------------------------------------------------------------- //
+
+async function loadDashboardSummary() {
+  try {
+    const res = await fetch(`${API_BASE}/dashboard-summary`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ regId: currentStudent.regId }),
+    });
+    const result = await res.json();
+    if (!result.success) return;
+
+    document.getElementById('statPresent').textContent = result.present;
+    document.getElementById('statAbsent').textContent = result.absent;
+    document.getElementById('statAttendanceRate').textContent = result.attendanceRate + '%';
+    document.getElementById('statSubmissionRate').textContent =
+      result.submitted + ' / ' + result.issued + ' (' + result.submissionRate + '%)';
+    document.getElementById('statPerformanceScore').textContent = result.performanceScore + '%';
+  } catch (err) {
+    // Non-fatal — the rest of the dashboard still works without these cards.
+    console.warn('Could not load dashboard summary:', err.message);
+  }
+}
+
+// --------------------------------------------------------------------- //
+// Course Content tab
+// --------------------------------------------------------------------- //
+
+async function loadCourseContent() {
+  const statusEl = document.getElementById('courseContentStatus');
+  const listEl = document.getElementById('courseContentList');
+  statusEl.hidden = false;
+  statusEl.textContent = 'Loading course content…';
+  listEl.innerHTML = '';
+
+  try {
+    const res = await fetch(`${API_BASE}/course-content`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ regId: currentStudent.regId }),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      statusEl.textContent = result.message || 'Could not load course content.';
+      return;
+    }
+    currentCourseContent = result.entries || [];
+    if (currentCourseContent.length === 0) {
+      statusEl.textContent = 'No course content has been scheduled yet.';
+      return;
+    }
+    statusEl.hidden = true;
+    renderCourseContent();
+  } catch (err) {
+    statusEl.textContent = 'Unexpected error: ' + err.message;
+  }
+}
+
+function renderCourseContent() {
+  const listEl = document.getElementById('courseContentList');
+  listEl.innerHTML = '';
+
+  currentCourseContent.forEach(function (item, index) {
+    const row = document.createElement('div');
+    row.className = 'content-item' + (item.locked ? ' locked' : '');
+
+    row.appendChild(contentField('Date', item.date));
+    row.appendChild(contentField('Module', item.module, 'course-title'));
+    row.appendChild(contentField('Session Focus', item.sessionFocus));
+    row.appendChild(contentField('Attendance', item.attendance));
+
+    const resourceField = document.createElement('div');
+    resourceField.className = 'content-field';
+    const resourceLabel = document.createElement('div');
+    resourceLabel.className = 'content-field-label';
+    resourceLabel.textContent = 'Learning Resource';
+    resourceField.appendChild(resourceLabel);
+    const resourcePill = document.createElement('div');
+    resourcePill.className = item.locked ? 'lock-pill' : 'resource-pill';
+    resourcePill.textContent = item.locked ? '🔒 Locked' : (item.videoId ? '▶ Video' : 'Available');
+    resourceField.appendChild(resourcePill);
+    row.appendChild(resourceField);
+
+    const actionField = document.createElement('div');
+    actionField.className = 'content-field';
+    const actionBtn = document.createElement('button');
+    actionBtn.type = 'button';
+    actionBtn.className = 'btn ' + (item.locked ? 'btn-ghost' : 'btn-primary');
+    actionBtn.textContent = item.locked ? 'Locked' : 'View';
+    actionBtn.disabled = !!item.locked;
+    if (!item.locked) {
+      actionBtn.addEventListener('click', function () { openDetailModal(index); });
+    }
+    actionField.appendChild(actionBtn);
+    row.appendChild(actionField);
+
+    listEl.appendChild(row);
+  });
+}
+
+function contentField(label, value, extraClass) {
+  const wrap = document.createElement('div');
+  wrap.className = 'content-field';
+  const labelEl = document.createElement('div');
+  labelEl.className = 'content-field-label';
+  labelEl.textContent = label;
+  const valueEl = document.createElement('div');
+  valueEl.className = 'content-field-value' + (extraClass ? ' ' + extraClass : '');
+  valueEl.textContent = value || '—';
+  wrap.appendChild(labelEl);
+  wrap.appendChild(valueEl);
+  return wrap;
+}
+
+// --------------------------------------------------------------------- //
+// Course Content detail popup
+// --------------------------------------------------------------------- //
+
+function openDetailModal(index) {
+  const item = currentCourseContent[index];
+  if (!item || item.locked || !item.details) return;
+
+  const fieldsEl = document.getElementById('detailFields');
+  fieldsEl.innerHTML = '';
+
+  Object.keys(item.details).forEach(function (label) {
+    const row = document.createElement('div');
+    row.className = 'detail-row';
+    const labelEl = document.createElement('div');
+    labelEl.className = 'field-label';
+    labelEl.textContent = label;
+    const valueEl = document.createElement('div');
+    valueEl.className = 'detail-row-value';
+    valueEl.textContent = item.details[label] || '—';
+    row.appendChild(labelEl);
+    row.appendChild(valueEl);
+    fieldsEl.appendChild(row);
+  });
+
+  const videoBlock = document.getElementById('detailVideoBlock');
+  const videoFrame = document.getElementById('detailVideoFrame');
+  if (item.videoId) {
+    videoFrame.src = 'https://www.youtube.com/embed/' + item.videoId;
+    videoBlock.hidden = false;
+  } else {
+    videoFrame.src = '';
+    videoBlock.hidden = true;
+  }
+
+  document.getElementById('detailModal').hidden = false;
+}
+
+function closeDetailModal() {
+  document.getElementById('detailModal').hidden = true;
+  document.getElementById('detailVideoFrame').src = ''; // stop playback
 }

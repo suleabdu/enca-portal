@@ -38,8 +38,7 @@ SCOPES = [
 
 
 def main():
-    flow = InstalledAppFlow.from_client_secrets_file(
-        "setup/client_secret.json", SCOPES)
+    flow = InstalledAppFlow.from_client_secrets_file("client_secret.json", SCOPES)
     # access_type=offline + prompt=consent guarantee a refresh token is
     # actually issued (Google sometimes omits it on repeat authorizations).
     creds = flow.run_local_server(

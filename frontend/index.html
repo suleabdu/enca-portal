@@ -40,6 +40,7 @@
     <nav class="tabbar">
       <button class="tab-btn active" data-tab="overviewTab">Dashboard</button>
       <button class="tab-btn" data-tab="assignmentsTab">Assignments</button>
+      <button class="tab-btn" data-tab="courseContentTab">Course Content</button>
     </nav>
 
     <main class="content">
@@ -65,6 +66,40 @@
             <div class="info-value" id="infoCourse">—</div>
           </div>
         </div>
+
+        <div class="stat-grid">
+          <div class="stat-card">
+            <div class="info-label">Attendance</div>
+            <div class="stat-row">
+              <div class="stat-item">
+                <div class="stat-number stat-good" id="statPresent">—</div>
+                <div class="stat-caption">Present</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-number stat-bad" id="statAbsent">—</div>
+                <div class="stat-caption">Absent</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-number" id="statAttendanceRate">—</div>
+                <div class="stat-caption">Attendance Rate</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="info-label">Performance</div>
+            <div class="stat-row">
+              <div class="stat-item">
+                <div class="stat-number" id="statSubmissionRate">—</div>
+                <div class="stat-caption">Assignments Submitted</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-number stat-highlight" id="statPerformanceScore">—</div>
+                <div class="stat-caption">Overall Performance</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- ---------- Assignments tab ---------- -->
@@ -72,6 +107,23 @@
         <h1 class="page-title">Your Assignments</h1>
         <div id="assignmentsStatus" class="muted-text">Loading assignments…</div>
         <div id="assignmentsList" class="assignment-list"></div>
+      </section>
+
+      <!-- ---------- Course Content tab ---------- -->
+      <section id="courseContentTab" class="tab-panel">
+        <h1 class="page-title">Course Content</h1>
+
+        <div class="content-table-head">
+          <div>Date</div>
+          <div>Module</div>
+          <div>Session Focus</div>
+          <div>Attendance</div>
+          <div>Learning Resource</div>
+          <div>Action</div>
+        </div>
+
+        <div id="courseContentStatus" class="muted-text">Loading course content…</div>
+        <div id="courseContentList" class="content-list"></div>
       </section>
 
     </main>
@@ -104,6 +156,25 @@
         <button type="submit" class="btn btn-primary btn-block" id="submitAssignmentBtn">Submit</button>
         <div id="submitStatus" class="status-text" hidden></div>
       </form>
+    </div>
+  </div>
+
+  <!-- ==================== COURSE CONTENT DETAIL MODAL ==================== -->
+  <div id="detailModal" class="modal-backdrop" hidden>
+    <div class="modal-card detail-card">
+      <div class="modal-header">
+        <h2>Session Details</h2>
+        <button id="closeDetailModalBtn" class="modal-close" aria-label="Close">&times;</button>
+      </div>
+
+      <div id="detailFields" class="detail-fields"></div>
+      <div id="detailVideoBlock" class="detail-video-block" hidden>
+        <div class="field-label">Video</div>
+        <div class="video-embed-wrapper">
+          <iframe id="detailVideoFrame" src="" title="Learning resource video"
+            frameborder="0" allowfullscreen></iframe>
+        </div>
+      </div>
     </div>
   </div>
 

@@ -49,6 +49,26 @@ def assignments():
         return jsonify({"success": False, "message": f"Could not load assignments: {err}"}), 500
 
 
+@app.post("/api/course-content")
+def course_content():
+    payload = request.get_json(silent=True) or {}
+    try:
+        result = svc.get_course_content(payload.get("regId"))
+        return jsonify(result)
+    except Exception as err:  # noqa: BLE001
+        return jsonify({"success": False, "message": f"Could not load course content: {err}"}), 500
+
+
+@app.post("/api/dashboard-summary")
+def dashboard_summary():
+    payload = request.get_json(silent=True) or {}
+    try:
+        result = svc.get_dashboard_summary(payload.get("regId"))
+        return jsonify(result)
+    except Exception as err:  # noqa: BLE001
+        return jsonify({"success": False, "message": f"Could not load dashboard summary: {err}"}), 500
+
+
 @app.post("/api/submit")
 def submit():
     reg_id = request.form.get("regId")

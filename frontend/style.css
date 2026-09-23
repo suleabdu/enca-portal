@@ -151,6 +151,139 @@ textarea.field-input { resize: vertical; }
 .info-label { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; }
 .info-value { font-size: 17px; font-weight: 700; margin-top: 6px; color: var(--text); word-break: break-word; }
 
+/* ---------------- Dashboard stat cards ---------------- */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+  margin-top: 14px;
+}
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px;
+}
+.stat-row {
+  display: flex;
+  gap: 18px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.stat-item { flex: 1; min-width: 84px; }
+.stat-number { font-size: 24px; font-weight: 700; color: var(--text); }
+.stat-caption { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.stat-good { color: var(--success); }
+.stat-bad { color: var(--danger); }
+.stat-highlight { color: var(--accent-dark); }
+
+/* ---------------- Course Content table/list ---------------- */
+.content-table-head {
+  display: none;
+  grid-template-columns: 1.1fr 1.2fr 2fr 1fr 1.3fr 0.9fr;
+  gap: 10px;
+  padding: 0 18px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.content-list { display: flex; flex-direction: column; gap: 12px; margin-top: 10px; }
+
+.content-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px 18px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+.content-item.locked { opacity: 0.7; }
+
+.content-field { display: flex; flex-direction: column; gap: 2px; }
+.content-field-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.content-field-value { font-size: 14px; color: var(--text); }
+.content-field-value.course-title { font-weight: 700; color: var(--accent-dark); }
+
+.lock-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  background: #eef1f4;
+  padding: 5px 10px;
+  border-radius: 999px;
+  width: fit-content;
+}
+
+.resource-pill {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--success);
+  background: #e5f1ea;
+  padding: 5px 10px;
+  border-radius: 999px;
+  width: fit-content;
+}
+
+/* Table-like layout once there's room for six columns side by side */
+@media (min-width: 860px) {
+  .content-table-head { display: grid; }
+  .content-item {
+    grid-template-columns: 1.1fr 1.2fr 2fr 1fr 1.3fr 0.9fr;
+    align-items: center;
+    padding: 14px 18px;
+  }
+  .content-field-label { display: none; }
+}
+
+/* ---------------- Detail popup (vertical field list) ---------------- */
+.detail-card { max-width: 520px; }
+.detail-fields {
+  display: flex;
+  flex-direction: column;
+  margin-top: 8px;
+}
+.detail-row {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.detail-row:last-child { border-bottom: none; }
+.detail-row .field-label { margin: 0 0 3px; }
+.detail-row-value { font-size: 14.5px; color: var(--text); word-break: break-word; white-space: pre-wrap; }
+
+.detail-video-block { margin-top: 16px; }
+.video-embed-wrapper {
+  position: relative;
+  width: 100%;
+  padding-bottom: 56.25%; /* 16:9 */
+  margin-top: 6px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+}
+.video-embed-wrapper iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
 /* ---------------- Assignment list ---------------- */
 .assignment-list { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
 .assignment-item {
@@ -179,7 +312,6 @@ textarea.field-input { resize: vertical; }
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
-  line-clamp: 2;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
@@ -243,6 +375,7 @@ textarea.field-input { resize: vertical; }
 /* ---------------- Responsive breakpoints ---------------- */
 @media (max-width: 720px) {
   .card-grid { grid-template-columns: repeat(2, 1fr); }
+  .stat-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 460px) {
@@ -250,4 +383,5 @@ textarea.field-input { resize: vertical; }
   .login-card { padding: 28px 22px; }
   .content { padding: 18px 14px 48px; }
   .assignment-item { flex-direction: column; align-items: flex-start; }
+  .stat-row { gap: 12px; }
 }

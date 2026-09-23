@@ -49,14 +49,73 @@ enca-portal/
 └── .gitignore
 ```
 
-Sheet contract is unchanged from before:
+## Current sheet contract
 
 **Students**: A = Reg ID (also the password), B = Name, C = Gender,
 D = Username, F = Course.
-**Attendance & Assignments**: B = Course, D = Reg ID, E = Student Name,
-H = Status (must read exactly `Issued`), I = Assignment content.
-**Assignments Submissions** (auto-created): ID, Date, Student Name, Reg ID,
-Course, Submission File.
+
+**Attendance & Assignments**: A = Timetable ID (links to Timetable's own
+Col A), B = Course, D = Reg ID, E = Student Name, G = Attendance
+(`Present` / `Absent`), H = Status (must read exactly `Issued`),
+I = Assignment content, J = Submission Status (`Submitted` once uploaded),
+K = Submission Date, L = Submission File (Drive link).
+
+**Timetable**: A = Timetable ID, B = Date (e.g. `16-Sept-2026`),
+D = Module, E = Session Focus, G = Learning Resource (YouTube link).
+Columns C, F, H, I are also read and shown in the Course Content detail
+popup, labelled using whatever text is in that sheet's own header row (row 1)
+— so the backend never has to guess what those columns mean.
+
+There is no longer a separate "Assignments Submissions" sheet — submissions
+are written straight onto the matching row of "Attendance & Assignments"
+(see Feature 3 below).
+
+## What's new: Course Content, dashboard stats, and revised submissions
+
+**1. Course Content tab.** A third dashboard tab pulls the full Timetable
+(cols A–I) and shows Date / Module / Session Focus / Attendance / Learning
+Resource / Action as a responsive list (a real 6-column table on wider
+screens, stacked labelled cards on phones).
+
+- **Locking**: any row whose Date (Col B) is in the future is locked —
+  its "Action" button reads "Locked" and is disabled, and the backend
+  never even sends that row's Learning Resource link or full detail data to
+  the browser (not just a hidden button — the data itself isn't exposed).
+- **Attendance per row** comes from "Attendance & Assignments" Col G,
+  matched by Timetable Col A == Attendance & Assignments Col A **for this
+  specific student's Reg ID**. *(Assumption: since "Attendance & Assignments"
+  has one row per student per session, matching on Timetable ID alone would
+  be ambiguous across students — the Reg ID match is added to keep this
+  correct per-student. Flag it if your sheet is structured differently.)*
+- **"View" button** opens a popup listing every pulled column (A–I) as
+  vertically stacked label/value pairs, using the Timetable sheet's own
+  header row for labels, plus the matched Attendance value. If Col G's
+  link is a recognisable YouTube URL, the popup also embeds it as a
+  playable video (not just a link).
+
+**2. Dashboard stat cards.** Two new cards on the main Dashboard tab:
+- **Attendance** — Present count, Absent count, and attendance rate, all
+  computed from "Attendance & Assignments" Col G for this student only.
+- **Performance** — assignment submission rate (issued vs. submitted, from
+  Cols H/J) averaged with the attendance rate into one overall score.
+
+**3. Submissions now write directly into "Attendance & Assignments".**
+Instead of logging to a separate sheet, `submit_assignment()` finds the row
+where **Reg ID (Col D) AND Course (Col B) AND Status = "Issued"** all match,
+and writes `Submitted` / the timestamp / the Drive file link into that row's
+J/K/L columns. *(Assumption: Student ID alone isn't enough to pick the right
+row if a student has more than one issued assignment at once, so Course is
+used as the disambiguator — this is already the data your frontend sends
+with every submission, so nothing changes on your end.)*
+
+Uploading to Drive and mirroring folder access to your other sheet
+collaborators (Feature from the previous update) is unchanged.
+
+**Bug fix**: assignments previously showed "Submitted" too broadly. Now
+`get_assignments()` reads Col J on that exact row only, and only ever
+reports `submitted: true` when J reads exactly `Submitted` — a freshly
+issued assignment always starts as open, and only the one specific
+assignment that was actually submitted shows as submitted.
 
 ---
 
