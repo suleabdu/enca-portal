@@ -11,6 +11,6 @@
 # then commit + push — Netlify redeploys automatically.
 [[redirects]]
   from = "/api/*"
-  to = "https://YOUR-RENDER-BACKEND-URL.onrender.com/api/:splat"
+  to = "https://enca-portal-backend-hkl7.onrender.com/api/:splat"
   status = 200
   force = true
