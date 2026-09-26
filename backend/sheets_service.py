@@ -13,16 +13,19 @@ Sheet contracts:
     Col F  Course
 
   "Attendance & Assignments"
-    Col A  Timetable ID     (matches Col A on the "Timetable" sheet)
+    Col A  Lecture ID       (matches Col A on the "Timetable" sheet; also
+                             the exact-row key used to file a submission)
     Col B  Course
     Col D  Reg ID
     Col E  Student Name
     Col G  Attendance       ("Present" / "Absent")
     Col H  Status               ("Issued" = assignment visible to student)
     Col I  Assignment Content
-    Col J  Submission Status    ("Submitted" once a file is uploaded)
-    Col K  Submission Date
-    Col L  Submission File (Drive URL)
+    Col J  Assignment Mark      (max obtainable mark)
+    Col K  Score                (student's obtained score, once graded)
+    Col L  Submission Status    ("Submitted" once a file is uploaded)
+    Col M  Submission Date
+    Col N  Submission File (Drive URL)
 
   "Timetable"
     Col A  Timetable ID     (matches Col A on "Attendance & Assignments")
@@ -65,6 +68,7 @@ SCOPES = [
 STUDENTS_SHEET_NAME = "Students"
 ASSIGNMENTS_SHEET_NAME = "Attendance & Assignments"
 TIMETABLE_SHEET_NAME = "Timetable"
+USERS_SHEET_NAME = "Users"
 
 DRIVE_FOLDER_PATH = [
     "ENCA Digital Training on Data Analytics and Capacity Building",
@@ -74,18 +78,45 @@ DRIVE_FOLDER_PATH = [
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB safety cap
 
+ADMITTED_STATUS = "admitted"  # case-insensitive comparison value
+
+# "Students" column indices (0-indexed), full A:J schema used by the admin
+# dashboard. Note: Col D is used both as the displayed "Email" field AND as
+# the student's login username (there is no separate Username column in
+# this schema — see README for this assumption).
+ST_ID = 0               # A — Reg ID, also the login PASSWORD
+ST_NAME = 1             # B
+ST_GENDER = 2           # C
+ST_EMAIL = 3            # D — login USERNAME
+ST_PHONE = 4            # E
+ST_COURSE = 5           # F
+ST_COHORT = 6           # G
+ST_ADMISSION_DATE = 7   # H
+ST_YEAR = 8             # I
+ST_STATUS = 9           # J — must read "Admitted" to unlock course content/assignments
+ST_ROW_WIDTH = 10
+
+# "Users" (admin accounts) column indices (0-indexed)
+US_USERNAME = 0  # A
+US_NAME = 1      # B
+US_PASSWORD = 2  # C
+US_PHONE = 3     # D
+US_ROW_WIDTH = 4
+
 # "Attendance & Assignments" column indices (0-indexed)
-AA_TIMETABLE_ID = 0   # A
+AA_LECTURE_ID = 0     # A  — links to Timetable Col A, and uniquely IDs each session's row
 AA_COURSE = 1         # B
 AA_REG_ID = 3         # D
 AA_NAME = 4           # E
 AA_ATTENDANCE = 6     # G
-AA_STATUS = 7         # H
+AA_STATUS = 7         # H  — "Issued" = assignment visible to student
 AA_CONTENT = 8        # I
-AA_SUB_STATUS = 9     # J
-AA_SUB_DATE = 10      # K
-AA_SUB_FILE = 11      # L
-AA_ROW_WIDTH = 12
+AA_MARK = 9           # J  — max mark for this assignment
+AA_SCORE = 10         # K  — student's obtained score, once graded
+AA_SUB_STATUS = 11    # L  — "Submitted" once a file is uploaded
+AA_SUB_DATE = 12      # M
+AA_SUB_FILE = 13      # N
+AA_ROW_WIDTH = 14
 
 # "Timetable" column indices (0-indexed)
 TT_ID = 0        # A
@@ -210,6 +241,17 @@ def extract_youtube_id(url):
     return match.group(1) if match else None
 
 
+def _to_number(value):
+    """Parses a Mark/Score cell into a float, or None if blank/unparsable."""
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Phase 1 — Authentication
 # ---------------------------------------------------------------------------
@@ -222,19 +264,41 @@ def authenticate(username, password):
 
     rows = _sheet_values(STUDENTS_SHEET_NAME)
     for row in rows[1:]:
-        row = _padded(row, 6)
-        reg_id = str(row[0]).strip()   # Col A
-        name = str(row[1]).strip()     # Col B
-        gender = str(row[2]).strip()   # Col C
-        uname = str(row[3]).strip()    # Col D
-        course = str(row[5]).strip()   # Col F
+        row = _padded(row, ST_ROW_WIDTH)
+        reg_id = str(row[ST_ID]).strip()
+        name = str(row[ST_NAME]).strip()
+        gender = str(row[ST_GENDER]).strip()
+        email = str(row[ST_EMAIL]).strip()
+        course = str(row[ST_COURSE]).strip()
+        status = str(row[ST_STATUS]).strip()
 
-        if uname == username and reg_id == password:
+        if email == username and reg_id == password:
             return {
                 "success": True,
-                "student": {"regId": reg_id, "name": name, "gender": gender, "course": course},
+                "student": {
+                    "regId": reg_id,
+                    "name": name,
+                    "gender": gender,
+                    "course": course,
+                    "status": status or "Not Set",
+                },
             }
     return {"success": False, "message": "Incorrect username or password."}
+
+
+def get_student_status(reg_id):
+    """Looks up a student's admission Status (Col J) by Reg ID (Col A)."""
+    reg_id = (reg_id or "").strip()
+    rows = _sheet_values(STUDENTS_SHEET_NAME)
+    for row in rows[1:]:
+        row = _padded(row, ST_ROW_WIDTH)
+        if str(row[ST_ID]).strip() == reg_id:
+            return str(row[ST_STATUS]).strip()
+    return ""
+
+
+def is_admitted(status):
+    return (status or "").strip().lower() == ADMITTED_STATUS
 
 
 # ---------------------------------------------------------------------------
@@ -244,25 +308,42 @@ def authenticate(username, password):
 def get_assignments(reg_id, student_name):
     """
     Returns every "Issued" assignment matched to this student on
-    "Attendance & Assignments" (Reg ID + Name). "submitted" is read
-    strictly from column J on THAT SAME ROW, and is only ever true when J
-    reads exactly "Submitted" (case-insensitive) — so a newly issued
-    assignment is always open, and only the specific row that was actually
-    submitted shows as submitted. Nothing here looks at any other row.
+    "Attendance & Assignments" (Reg ID + Name), including its Lecture ID
+    (Col A) and Mark/Score (Cols J/K). "submitted" is read strictly from
+    column L on THAT SAME ROW, and is only ever true when L reads exactly
+    "Submitted" (case-insensitive) — so a newly issued assignment is always
+    open, and only the specific row that was actually submitted shows as
+    submitted. Nothing here looks at any other row.
     """
     reg_id = (reg_id or "").strip()
     student_name = (student_name or "").strip()
+
+    status = get_student_status(reg_id)
+    if not is_admitted(status):
+        return {
+            "success": True,
+            "restricted": True,
+            "status": status or "Not Set",
+            "message": (
+                f'Your admission status is currently "{status or "Not Set"}". '
+                "Please contact the training administrator to access assignments."
+            ),
+            "assignments": [],
+        }
 
     rows = _sheet_values(ASSIGNMENTS_SHEET_NAME)
 
     assignments = []
     for row in rows[1:]:
         row = _padded(row, AA_ROW_WIDTH)
+        lecture_id = str(row[AA_LECTURE_ID]).strip()
         course = str(row[AA_COURSE]).strip()
         row_reg_id = str(row[AA_REG_ID]).strip()
         row_name = str(row[AA_NAME]).strip()
         status = str(row[AA_STATUS]).strip()
         content = str(row[AA_CONTENT]).strip()
+        mark = str(row[AA_MARK]).strip()
+        score = str(row[AA_SCORE]).strip()
         sub_status = str(row[AA_SUB_STATUS]).strip()
 
         if (
@@ -272,8 +353,11 @@ def get_assignments(reg_id, student_name):
             and content
         ):
             assignments.append({
+                "lectureId": lecture_id,
                 "course": course,
                 "content": content,
+                "mark": mark or None,
+                "score": score or None,
                 "submitted": sub_status.lower() == "submitted",
             })
     return {"success": True, "assignments": assignments}
@@ -364,17 +448,20 @@ def sync_folder_permissions_with_sheet(folder_id):
         print(f"Could not sync folder permissions with sheet collaborators: {err}")
 
 
-def submit_assignment(reg_id, student_name, course, description, file_storage):
+def submit_assignment(lecture_id, reg_id, student_name, course, description, file_storage):
     """
     Uploads the file to Drive, then records the submission directly on the
-    matching "Attendance & Assignments" row (columns J/K/L) — found by
-    Reg ID (Col D) AND Course (Col B) AND Status = "Issued", so a student
-    with more than one active assignment updates the correct one.
+    matching "Attendance & Assignments" row (columns L/M/N) — found by
+    Lecture ID (Col A) AND Reg ID (Col D). This is an exact-row key, unlike
+    matching on the free-text Course name (which previously failed silently
+    whenever a stray space or capitalization difference meant the row was
+    never found — that was the root cause of submissions not writing).
     """
+    lecture_id = (lecture_id or "").strip()
     reg_id = (reg_id or "").strip()
     course = (course or "").strip()
 
-    if not (reg_id and student_name and course):
+    if not (lecture_id and reg_id and student_name and course):
         return {"success": False, "message": "Missing required submission details."}
     if not file_storage or not file_storage.filename:
         return {"success": False, "message": "Please attach a file before submitting."}
@@ -389,16 +476,18 @@ def submit_assignment(reg_id, student_name, course, description, file_storage):
 
     target_row_number = None
     for idx, row in enumerate(rows[1:], start=2):  # sheet rows are 1-indexed; header is row 1
-        row = _padded(row, AA_STATUS + 1)
+        row = _padded(row, AA_REG_ID + 1)
+        row_lecture_id = str(row[AA_LECTURE_ID]).strip()
         row_reg_id = str(row[AA_REG_ID]).strip()
-        row_course = str(row[AA_COURSE]).strip()
-        row_status = str(row[AA_STATUS]).strip().lower()
-        if row_reg_id == reg_id and row_course == course and row_status == "issued":
+        if row_lecture_id == lecture_id and row_reg_id == reg_id:
             target_row_number = idx
             break
 
     if target_row_number is None:
-        return {"success": False, "message": "Could not find a matching assignment row for this submission."}
+        return {
+            "success": False,
+            "message": "Could not find a matching row for this Lecture ID and Student ID.",
+        }
 
     # Phase 4 — store the file in the correct Drive subfolder
     folder_id = _get_or_create_folder_path(DRIVE_FOLDER_PATH)
@@ -415,16 +504,22 @@ def submit_assignment(reg_id, student_name, course, description, file_storage):
         "name": safe_name,
         "parents": [folder_id],
         "description": (
-            f"Submitted by {student_name} ({reg_id}) for {course}"
+            f"Submitted by {student_name} ({reg_id}) for {course} (Lecture ID: {lecture_id})"
             + (f"\n\nNote: {description}" if description else "")
         ),
     }
     created = drive.files().create(body=metadata, media_body=media, fields="id, webViewLink").execute()
     file_url = created.get("webViewLink")
 
-    # Phase 3 (revised) — log the submission directly on the matched row
+    # Phase 3 (revised) — log the submission directly on the matched row.
+    # Keyword arguments here are deliberate: gspread flipped the positional
+    # order of update()'s arguments between major versions, so passing
+    # range_name/values by name avoids that ambiguity entirely.
     submitted_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    worksheet.update(f"J{target_row_number}:L{target_row_number}", [["Submitted", submitted_at, file_url]])
+    worksheet.update(
+        range_name=f"L{target_row_number}:N{target_row_number}",
+        values=[["Submitted", submitted_at, file_url]],
+    )
 
     return {
         "success": True,
@@ -447,6 +542,20 @@ def get_course_content(reg_id):
     """
     reg_id = (reg_id or "").strip()
 
+    status = get_student_status(reg_id)
+    if not is_admitted(status):
+        return {
+            "success": True,
+            "restricted": True,
+            "status": status or "Not Set",
+            "message": (
+                f'Your admission status is currently "{status or "Not Set"}". '
+                "Please contact the training administrator to access course content."
+            ),
+            "headers": [],
+            "entries": [],
+        }
+
     spreadsheet = open_spreadsheet()
     timetable_ws = _get_sheet(spreadsheet, TIMETABLE_SHEET_NAME)
     timetable_rows = timetable_ws.get_all_values()
@@ -460,7 +569,7 @@ def get_course_content(reg_id):
         aa_ws = _get_sheet(spreadsheet, ASSIGNMENTS_SHEET_NAME)
         for row in aa_ws.get_all_values()[1:]:
             row = _padded(row, AA_ATTENDANCE + 1)
-            key = (str(row[AA_TIMETABLE_ID]).strip(), str(row[AA_REG_ID]).strip())
+            key = (str(row[AA_LECTURE_ID]).strip(), str(row[AA_REG_ID]).strip())
             attendance_lookup[key] = str(row[AA_ATTENDANCE]).strip()
     except RuntimeError:
         pass  # Attendance sheet missing — attendance just shows as unavailable
@@ -520,20 +629,28 @@ def get_course_content(reg_id):
 # Dashboard summary cards
 # ---------------------------------------------------------------------------
 
-def get_dashboard_summary(reg_id):
+def _compute_student_stats(reg_id, aa_rows):
     """
-    Attendance card: counts Present/Absent from Col G, this student's rows only.
-    Performance card: attendance rate + assignment submission rate, averaged.
+    Shared aggregation used by both the student-facing dashboard and the
+    admin analytics cards, so the whole "Attendance & Assignments" sheet is
+    only fetched once even when computing this for every student.
+
+    Aggregate Performance is the average of whichever of {attendance rate,
+    submission rate, score percentage} actually have data — a student with
+    no graded assignments yet still gets a fair figure from the other two,
+    rather than being dragged down by an empty category.
     """
     reg_id = (reg_id or "").strip()
-    rows = _sheet_values(ASSIGNMENTS_SHEET_NAME)
 
     present = 0
     absent = 0
     issued = 0
     submitted = 0
+    graded_count = 0
+    total_score = 0.0
+    total_mark = 0.0
 
-    for row in rows[1:]:
+    for row in aa_rows[1:]:
         row = _padded(row, AA_ROW_WIDTH)
         if str(row[AA_REG_ID]).strip() != reg_id:
             continue
@@ -550,19 +667,289 @@ def get_dashboard_summary(reg_id):
             if str(row[AA_SUB_STATUS]).strip().lower() == "submitted":
                 submitted += 1
 
+        mark_val = _to_number(row[AA_MARK])
+        score_val = _to_number(row[AA_SCORE])
+        if mark_val is not None and score_val is not None:
+            graded_count += 1
+            total_mark += mark_val
+            total_score += score_val
+
     total_attendance = present + absent
     attendance_rate = round((present / total_attendance) * 100, 1) if total_attendance else 0.0
     submission_rate = round((submitted / issued) * 100, 1) if issued else 0.0
-    has_any_data = total_attendance > 0 or issued > 0
-    performance_score = round((attendance_rate + submission_rate) / 2, 1) if has_any_data else 0.0
+    score_percentage = round((total_score / total_mark) * 100, 1) if total_mark > 0 else 0.0
+
+    components = []
+    if total_attendance > 0:
+        components.append(attendance_rate)
+    if issued > 0:
+        components.append(submission_rate)
+    if graded_count > 0:
+        components.append(score_percentage)
+    aggregate_performance = round(sum(components) / len(components), 1) if components else 0.0
 
     return {
-        "success": True,
         "present": present,
         "absent": absent,
         "attendanceRate": attendance_rate,
         "issued": issued,
         "submitted": submitted,
         "submissionRate": submission_rate,
-        "performanceScore": performance_score,
+        "gradedCount": graded_count,
+        "totalScore": total_score,
+        "totalMark": total_mark,
+        "scorePercentage": score_percentage,
+        "aggregatePerformance": aggregate_performance,
+        "hasData": total_attendance > 0 or issued > 0,
+    }
+
+
+def get_dashboard_summary(reg_id):
+    aa_rows = _sheet_values(ASSIGNMENTS_SHEET_NAME)
+    stats = _compute_student_stats(reg_id, aa_rows)
+    return {"success": True, **stats}
+
+
+# ---------------------------------------------------------------------------
+# Admin — authentication
+# ---------------------------------------------------------------------------
+
+def authenticate_admin(username, password):
+    username = (username or "").strip()
+    password = (password or "").strip()
+    if not username or not password:
+        return {"success": False, "message": "Please enter both username and password."}
+
+    rows = _sheet_values(USERS_SHEET_NAME)
+    for row in rows[1:]:
+        row = _padded(row, US_ROW_WIDTH)
+        row_username = str(row[US_USERNAME]).strip()
+        name = str(row[US_NAME]).strip()
+        row_password = str(row[US_PASSWORD]).strip()
+        phone = str(row[US_PHONE]).strip()
+
+        if row_username == username and row_password == password:
+            return {"success": True, "admin": {"username": row_username, "name": name, "phone": phone}}
+    return {"success": False, "message": "Incorrect username or password."}
+
+
+# ---------------------------------------------------------------------------
+# Admin — Students tab
+# ---------------------------------------------------------------------------
+
+def get_all_students():
+    """Full A:J roster for the admin Students tab."""
+    rows = _sheet_values(STUDENTS_SHEET_NAME)
+    students = []
+    for row in rows[1:]:
+        row = _padded(row, ST_ROW_WIDTH)
+        reg_id = str(row[ST_ID]).strip()
+        if not reg_id:
+            continue
+        students.append({
+            "id": reg_id,
+            "name": str(row[ST_NAME]).strip(),
+            "gender": str(row[ST_GENDER]).strip(),
+            "email": str(row[ST_EMAIL]).strip(),
+            "phone": str(row[ST_PHONE]).strip(),
+            "course": str(row[ST_COURSE]).strip(),
+            "cohort": str(row[ST_COHORT]).strip(),
+            "admissionDate": str(row[ST_ADMISSION_DATE]).strip(),
+            "year": str(row[ST_YEAR]).strip(),
+            "status": str(row[ST_STATUS]).strip() or "Not Set",
+        })
+    return {"success": True, "students": students}
+
+
+def update_student_status(student_id, new_status):
+    student_id = (student_id or "").strip()
+    new_status = (new_status or "").strip()
+    if not student_id or not new_status:
+        return {"success": False, "message": "Missing student ID or status."}
+
+    worksheet = _get_sheet(open_spreadsheet(), STUDENTS_SHEET_NAME)
+    rows = worksheet.get_all_values()
+
+    target_row = None
+    for idx, row in enumerate(rows[1:], start=2):
+        row = _padded(row, ST_ID + 1)
+        if str(row[ST_ID]).strip() == student_id:
+            target_row = idx
+            break
+
+    if target_row is None:
+        return {"success": False, "message": f'No student found with ID "{student_id}".'}
+
+    worksheet.update(range_name=f"J{target_row}", values=[[new_status]])
+    return {"success": True, "message": f"Status updated to \"{new_status}\".", "id": student_id, "status": new_status}
+
+
+# ---------------------------------------------------------------------------
+# Admin — Course Content tab (unlocked, cohort-wide attendance)
+# ---------------------------------------------------------------------------
+
+def get_admin_course_content():
+    """
+    Same Timetable-driven list as the student view, but never locked by
+    date (admins manage the schedule, they don't consume it), and with a
+    cohort-wide Attendance figure (Present / Total marked, across every
+    student) instead of one student's personal attendance.
+    """
+    spreadsheet = open_spreadsheet()
+    timetable_ws = _get_sheet(spreadsheet, TIMETABLE_SHEET_NAME)
+    timetable_rows = timetable_ws.get_all_values()
+    if not timetable_rows:
+        return {"success": True, "headers": [], "entries": []}
+
+    headers = _padded(timetable_rows[0], TT_ROW_WIDTH)[:TT_ROW_WIDTH]
+
+    tally = {}  # lecture_id -> [present, marked_total]
+    try:
+        aa_ws = _get_sheet(spreadsheet, ASSIGNMENTS_SHEET_NAME)
+        for row in aa_ws.get_all_values()[1:]:
+            row = _padded(row, AA_ATTENDANCE + 1)
+            lecture_id = str(row[AA_LECTURE_ID]).strip()
+            attendance = str(row[AA_ATTENDANCE]).strip().lower()
+            if not lecture_id or attendance not in ("present", "absent"):
+                continue
+            present, total = tally.get(lecture_id, [0, 0])
+            total += 1
+            if attendance == "present":
+                present += 1
+            tally[lecture_id] = [present, total]
+    except RuntimeError:
+        pass
+
+    entries = []
+    for row in timetable_rows[1:]:
+        row = _padded(row, TT_ROW_WIDTH)
+        lecture_id = str(row[TT_ID]).strip()
+        date_str = str(row[TT_DATE]).strip()
+        module = str(row[TT_MODULE]).strip()
+        session_focus = str(row[TT_FOCUS]).strip()
+        resource = str(row[TT_RESOURCE]).strip()
+
+        if not (lecture_id or date_str or module or session_focus):
+            continue
+
+        present, total = tally.get(lecture_id, [0, 0])
+        attendance_display = f"{present}/{total} ({round(present / total * 100)}%)" if total else "—"
+
+        details = {
+            (headers[i] if i < len(headers) and headers[i] else f"Column {chr(65 + i)}"): row[i]
+            for i in range(TT_ROW_WIDTH)
+        }
+        details["Cohort Attendance"] = attendance_display
+
+        entries.append({
+            "id": lecture_id,
+            "date": date_str,
+            "module": module,
+            "sessionFocus": session_focus,
+            "attendance": attendance_display,
+            "locked": False,
+            "learningResource": resource or None,
+            "videoId": extract_youtube_id(resource),
+            "details": details,
+        })
+
+    def sort_key(entry):
+        parsed = parse_flexible_date(entry["date"])
+        return (parsed is None, parsed or date.max)
+
+    entries.sort(key=sort_key)
+    return {"success": True, "headers": headers, "entries": entries}
+
+
+# ---------------------------------------------------------------------------
+# Admin — Overview analytics (total students, top/bottom performer)
+# ---------------------------------------------------------------------------
+
+def _build_performance_headline(student, positive):
+    name = student["name"] or student["id"]
+    aggregate = student["aggregatePerformance"]
+    attendance_rate = student["attendanceRate"]
+    submission_rate = student["submissionRate"]
+    score_pct = student["scorePercentage"]
+
+    if positive:
+        headline = f"{name} leads the cohort with an aggregate performance of {aggregate}%."
+        strengths = []
+        if attendance_rate >= 80:
+            strengths.append(f"{attendance_rate}% attendance")
+        if submission_rate >= 80:
+            strengths.append(f"{student['submitted']}/{student['issued']} assignments submitted")
+        if student["gradedCount"] > 0 and score_pct >= 70:
+            strengths.append(f"an average score of {score_pct}%")
+        if strengths:
+            headline += " Consistently strong on " + ", ".join(strengths) + "."
+        return headline
+
+    headline = f"{name} has the lowest aggregate performance in the cohort at {aggregate}%."
+    concerns = []
+    if attendance_rate < 60:
+        concerns.append(f"attendance is only {attendance_rate}%")
+    if submission_rate < 60:
+        concerns.append(f"only {student['submitted']} of {student['issued']} assignments submitted")
+    if student["gradedCount"] > 0 and score_pct < 60:
+        concerns.append(f"an average score of {score_pct}%")
+    if concerns:
+        headline += " Main concerns: " + "; ".join(concerns) + "."
+    return headline
+
+
+def get_admin_dashboard_summary():
+    student_rows = _sheet_values(STUDENTS_SHEET_NAME)
+    aa_rows = _sheet_values(ASSIGNMENTS_SHEET_NAME)
+
+    profiled = []
+    for row in student_rows[1:]:
+        row = _padded(row, ST_ROW_WIDTH)
+        reg_id = str(row[ST_ID]).strip()
+        if not reg_id:
+            continue
+        stats = _compute_student_stats(reg_id, aa_rows)
+        profiled.append({
+            "id": reg_id,
+            "name": str(row[ST_NAME]).strip() or reg_id,
+            "course": str(row[ST_COURSE]).strip(),
+            "status": str(row[ST_STATUS]).strip() or "Not Set",
+            **stats,
+        })
+
+    total_students = len(profiled)
+    eligible = [s for s in profiled if s["hasData"]]
+
+    top = None
+    bottom = None
+    if eligible:
+        top = max(eligible, key=lambda s: s["aggregatePerformance"])
+        if len(eligible) > 1:
+            remaining = [s for s in eligible if s["id"] != top["id"]]
+            bottom = min(remaining, key=lambda s: s["aggregatePerformance"]) if remaining else None
+
+    top_card = None
+    if top:
+        top_card = {
+            "name": top["name"],
+            "course": top["course"],
+            "aggregatePerformance": top["aggregatePerformance"],
+            "headline": _build_performance_headline(top, positive=True),
+        }
+
+    bottom_card = None
+    if bottom:
+        bottom_card = {
+            "name": bottom["name"],
+            "course": bottom["course"],
+            "aggregatePerformance": bottom["aggregatePerformance"],
+            "headline": _build_performance_headline(bottom, positive=False),
+        }
+
+    return {
+        "success": True,
+        "totalStudents": total_students,
+        "studentsWithData": len(eligible),
+        "topPerformer": top_card,
+        "lowestPerformer": bottom_card,
     }

@@ -8,12 +8,64 @@
 </head>
 <body>
 
-  <!-- ============================= LOGIN SCREEN ============================= -->
-  <div id="loginScreen" class="screen login-screen">
-    <div class="login-card">
+  <!-- ============================= LANDING SCREEN ============================= -->
+  <div id="landingScreen" class="screen landing-screen">
+    <div class="landing-card">
       <div class="brand">
+        <div class="brand-logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M12 3 2 8l10 5 10-5-10-5Z" stroke-linejoin="round"/>
+            <path d="M6 10.5v5c0 1.4 2.7 3 6 3s6-1.6 6-3v-5" stroke-linejoin="round"/>
+          </svg>
+        </div>
         <div class="brand-mark">ENCA</div>
         <div class="brand-sub">Digital Training Portal</div>
+      </div>
+
+      <p class="landing-tagline">Choose how you'd like to sign in.</p>
+
+      <div class="landing-options">
+        <button type="button" class="landing-option" id="goStudentLogin">
+          <div class="landing-option-icon">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg>
+          </div>
+          <div class="landing-option-text">
+            <div class="landing-option-title">Student Login</div>
+            <div class="landing-option-sub">View your dashboard, course content &amp; assignments</div>
+          </div>
+          <svg class="landing-option-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m9 6 6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+
+        <button type="button" class="landing-option" id="goAdminLogin">
+          <div class="landing-option-icon landing-option-icon-admin">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3Z"/><path d="m9.5 12 1.8 1.8L15 10" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div class="landing-option-text">
+            <div class="landing-option-title">Admin Login</div>
+            <div class="landing-option-sub">Manage students, content &amp; cohort performance</div>
+          </div>
+          <svg class="landing-option-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m9 6 6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================= STUDENT LOGIN SCREEN ============================= -->
+  <div id="loginScreen" class="screen login-screen" hidden>
+    <div class="login-card">
+      <button type="button" class="back-link" id="backFromStudentLogin">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 6-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Back
+      </button>
+      <div class="brand">
+        <div class="brand-logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M12 3 2 8l10 5 10-5-10-5Z" stroke-linejoin="round"/>
+            <path d="M6 10.5v5c0 1.4 2.7 3 6 3s6-1.6 6-3v-5" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="brand-mark">ENCA</div>
+        <div class="brand-sub">Student Login</div>
       </div>
 
       <form id="loginForm" autocomplete="off">
@@ -29,18 +81,62 @@
     </div>
   </div>
 
+  <!-- ============================= ADMIN LOGIN SCREEN ============================= -->
+  <div id="adminLoginScreen" class="screen login-screen" hidden>
+    <div class="login-card">
+      <button type="button" class="back-link" id="backFromAdminLogin">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 6-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Back
+      </button>
+      <div class="brand">
+        <div class="brand-logo brand-logo-admin" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3Z"/></svg>
+        </div>
+        <div class="brand-mark">ENCA</div>
+        <div class="brand-sub">Admin Login</div>
+      </div>
+
+      <form id="adminLoginForm" autocomplete="off">
+        <label class="field-label" for="adminUsername">Username</label>
+        <input class="field-input" type="text" id="adminUsername" placeholder="Enter your admin username" required>
+
+        <label class="field-label" for="adminPassword">Password</label>
+        <input class="field-input" type="password" id="adminPassword" placeholder="Enter your password" required>
+
+        <button type="submit" class="btn btn-primary btn-block" id="adminLoginBtn">Log In</button>
+        <div id="adminLoginError" class="error-text" hidden></div>
+      </form>
+    </div>
+  </div>
+
   <!-- ============================== DASHBOARD =============================== -->
   <div id="dashboardScreen" class="screen dashboard-screen" hidden>
 
     <header class="topbar">
       <div class="topbar-brand">ENCA Digital Training Portal</div>
-      <button id="logoutBtn" class="btn btn-ghost">Log Out</button>
+      <div class="topbar-user">
+        <div class="avatar" id="topbarAvatar">S</div>
+        <div class="topbar-user-text">
+          <div class="topbar-user-name" id="topbarName">Student</div>
+          <div class="topbar-user-course" id="topbarCourse">—</div>
+        </div>
+        <button id="logoutBtn" class="btn btn-ghost">Log Out</button>
+      </div>
     </header>
 
     <nav class="tabbar">
-      <button class="tab-btn active" data-tab="overviewTab">Dashboard</button>
-      <button class="tab-btn" data-tab="assignmentsTab">Assignments</button>
-      <button class="tab-btn" data-tab="courseContentTab">Course Content</button>
+      <button class="tab-btn active" data-tab="overviewTab">
+        <svg class="tab-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1.2"/><rect x="14" y="3" width="7" height="5" rx="1.2"/><rect x="14" y="12" width="7" height="9" rx="1.2"/><rect x="3" y="16" width="7" height="5" rx="1.2"/></svg>
+        Dashboard
+      </button>
+      <button class="tab-btn" data-tab="assignmentsTab">
+        <svg class="tab-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M9 3h6v3H9z"/><path d="M8 11h8M8 15h8"/></svg>
+        Assignments
+      </button>
+      <button class="tab-btn" data-tab="courseContentTab">
+        <svg class="tab-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l6-3.5-6-3.5Z" fill="currentColor" stroke="none"/></svg>
+        Course Content
+      </button>
     </nav>
 
     <main class="content">
@@ -65,11 +161,18 @@
             <div class="info-label">Course</div>
             <div class="info-value" id="infoCourse">—</div>
           </div>
+          <div class="info-card">
+            <div class="info-label">Admission Status</div>
+            <div class="info-value" id="infoStatus"><span class="status-pill" id="infoStatusPill">—</span></div>
+          </div>
         </div>
 
         <div class="stat-grid">
-          <div class="stat-card">
-            <div class="info-label">Attendance</div>
+          <div class="stat-card stat-card-attendance">
+            <div class="stat-card-head">
+              <svg class="stat-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><path d="m8 14 2 2 5-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <div class="info-label">Attendance</div>
+            </div>
             <div class="stat-row">
               <div class="stat-item">
                 <div class="stat-number stat-good" id="statPresent">—</div>
@@ -79,25 +182,47 @@
                 <div class="stat-number stat-bad" id="statAbsent">—</div>
                 <div class="stat-caption">Absent</div>
               </div>
-              <div class="stat-item">
-                <div class="stat-number" id="statAttendanceRate">—</div>
-                <div class="stat-caption">Attendance Rate</div>
+            </div>
+            <div class="progress-block">
+              <div class="progress-label-row">
+                <span>Attendance Rate</span>
+                <span id="statAttendanceRate">—</span>
               </div>
+              <div class="progress-track"><div class="progress-fill progress-good" id="statAttendanceBar"></div></div>
             </div>
           </div>
 
-          <div class="stat-card">
-            <div class="info-label">Performance</div>
+          <div class="stat-card stat-card-assignments">
+            <div class="stat-card-head">
+              <svg class="stat-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M9 3h6v3H9z"/><path d="M8 11h8M8 15h5"/></svg>
+              <div class="info-label">Assignments</div>
+            </div>
             <div class="stat-row">
               <div class="stat-item">
-                <div class="stat-number" id="statSubmissionRate">—</div>
-                <div class="stat-caption">Assignments Submitted</div>
+                <div class="stat-number" id="statSubmissionFraction">—</div>
+                <div class="stat-caption">Submitted / Issued</div>
               </div>
               <div class="stat-item">
-                <div class="stat-number stat-highlight" id="statPerformanceScore">—</div>
-                <div class="stat-caption">Overall Performance</div>
+                <div class="stat-number" id="statScoreFraction">—</div>
+                <div class="stat-caption">Score Total</div>
               </div>
             </div>
+            <div class="progress-block">
+              <div class="progress-label-row">
+                <span>Score Percentage</span>
+                <span id="statScorePercentage">—</span>
+              </div>
+              <div class="progress-track"><div class="progress-fill progress-accent" id="statScoreBar"></div></div>
+            </div>
+          </div>
+
+          <div class="stat-card stat-card-aggregate">
+            <div class="stat-card-head">
+              <svg class="stat-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 21h8M12 17v4M7 4h10l-1 8.5a4 4 0 0 1-8 0L7 4Z"/><path d="M17 5h2a2 2 0 0 1 2 2c0 2-2 3-3.5 3M7 5H5a2 2 0 0 0-2 2c0 2 2 3 3.5 3"/></svg>
+              <div class="info-label">Aggregate Performance</div>
+            </div>
+            <div class="aggregate-number" id="statAggregatePerformance">—</div>
+            <div class="aggregate-label" id="statAggregateLabel">Combines attendance, submissions &amp; scores</div>
           </div>
         </div>
       </section>
@@ -105,6 +230,7 @@
       <!-- ---------- Assignments tab ---------- -->
       <section id="assignmentsTab" class="tab-panel">
         <h1 class="page-title">Your Assignments</h1>
+        <div id="assignmentsRestricted" class="restricted-banner" hidden></div>
         <div id="assignmentsStatus" class="muted-text">Loading assignments…</div>
         <div id="assignmentsList" class="assignment-list"></div>
       </section>
@@ -112,6 +238,7 @@
       <!-- ---------- Course Content tab ---------- -->
       <section id="courseContentTab" class="tab-panel">
         <h1 class="page-title">Course Content</h1>
+        <div id="courseContentRestricted" class="restricted-banner" hidden></div>
 
         <div class="content-table-head">
           <div>Date</div>
@@ -129,6 +256,112 @@
     </main>
   </div>
 
+  <!-- ============================== ADMIN DASHBOARD =============================== -->
+  <div id="adminDashboardScreen" class="screen dashboard-screen" hidden>
+
+    <header class="topbar">
+      <div class="topbar-brand">ENCA Admin Console</div>
+      <div class="topbar-user">
+        <div class="avatar avatar-admin" id="adminTopbarAvatar">A</div>
+        <div class="topbar-user-text">
+          <div class="topbar-user-name" id="adminTopbarName">Admin</div>
+          <div class="topbar-user-course">Administrator</div>
+        </div>
+        <button id="adminLogoutBtn" class="btn btn-ghost">Log Out</button>
+      </div>
+    </header>
+
+    <nav class="tabbar">
+      <button class="tab-btn active" data-admin-tab="adminOverviewTab">
+        <svg class="tab-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1.2"/><rect x="14" y="3" width="7" height="5" rx="1.2"/><rect x="14" y="12" width="7" height="9" rx="1.2"/><rect x="3" y="16" width="7" height="5" rx="1.2"/></svg>
+        Overview
+      </button>
+      <button class="tab-btn" data-admin-tab="adminStudentsTab">
+        <svg class="tab-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3 2.7-5.2 6-5.2s6 2.2 6 5.2"/><circle cx="17.5" cy="8.5" r="2.3"/><path d="M15.8 14.6c2.5.3 4.2 2.2 4.2 5"/></svg>
+        Students
+      </button>
+      <button class="tab-btn" data-admin-tab="adminCourseContentTab">
+        <svg class="tab-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l6-3.5-6-3.5Z" fill="currentColor" stroke="none"/></svg>
+        Course Content
+      </button>
+    </nav>
+
+    <main class="content">
+
+      <!-- ---------- Admin Overview tab ---------- -->
+      <section id="adminOverviewTab" class="admin-tab-panel active">
+        <h1 class="page-title">Cohort Overview</h1>
+        <div id="adminOverviewStatus" class="muted-text">Loading cohort analytics…</div>
+
+        <div class="admin-stat-grid" id="adminStatGrid" hidden>
+          <div class="stat-card admin-total-card">
+            <div class="stat-card-head">
+              <svg class="stat-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3 2.7-5.2 6-5.2s6 2.2 6 5.2"/><circle cx="17.5" cy="8.5" r="2.3"/><path d="M15.8 14.6c2.5.3 4.2 2.2 4.2 5"/></svg>
+              <div class="info-label">Total Students</div>
+            </div>
+            <div class="aggregate-number aggregate-number-dark" id="adminTotalStudents">—</div>
+            <div class="aggregate-label aggregate-label-dark" id="adminStudentsWithData">— with recorded activity</div>
+          </div>
+
+          <div class="stat-card performer-card performer-top">
+            <div class="stat-card-head">
+              <svg class="stat-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 21h8M12 17v4M7 4h10l-1 8.5a4 4 0 0 1-8 0L7 4Z"/><path d="M17 5h2a2 2 0 0 1 2 2c0 2-2 3-3.5 3M7 5H5a2 2 0 0 0-2 2c0 2 2 3 3.5 3"/></svg>
+              <div class="info-label">Top Performer</div>
+            </div>
+            <div class="performer-name" id="topPerformerName">—</div>
+            <div class="performer-score" id="topPerformerScore">—</div>
+            <p class="performer-headline" id="topPerformerHeadline">Not enough data yet.</p>
+          </div>
+
+          <div class="stat-card performer-card performer-bottom">
+            <div class="stat-card-head">
+              <svg class="stat-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v5m0 3.5h.01"/><path d="M10.3 3.9 2.6 17.5A1.8 1.8 0 0 0 4.2 20h15.6a1.8 1.8 0 0 0 1.6-2.5L13.7 3.9a1.8 1.8 0 0 0-3.4 0Z"/></svg>
+              <div class="info-label">Needs Attention</div>
+            </div>
+            <div class="performer-name" id="bottomPerformerName">—</div>
+            <div class="performer-score" id="bottomPerformerScore">—</div>
+            <p class="performer-headline" id="bottomPerformerHeadline">Not enough data yet.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- Admin Students tab ---------- -->
+      <section id="adminStudentsTab" class="admin-tab-panel">
+        <h1 class="page-title">Students</h1>
+        <div id="adminStudentsStatus" class="muted-text">Loading students…</div>
+        <div class="admin-table-wrapper">
+          <table class="admin-table" id="adminStudentsTable" hidden>
+            <thead>
+              <tr>
+                <th>ID</th><th>Name</th><th>Gender</th><th>Email</th><th>Phone No</th>
+                <th>Course Name</th><th>Cohort</th><th>Admission Date</th><th>Year</th><th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="adminStudentsTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ---------- Admin Course Content tab ---------- -->
+      <section id="adminCourseContentTab" class="admin-tab-panel">
+        <h1 class="page-title">Course Content</h1>
+
+        <div class="content-table-head">
+          <div>Date</div>
+          <div>Module</div>
+          <div>Session Focus</div>
+          <div>Attendance</div>
+          <div>Learning Resource</div>
+          <div>Action</div>
+        </div>
+
+        <div id="adminCourseContentStatus" class="muted-text">Loading course content…</div>
+        <div id="adminCourseContentList" class="content-list"></div>
+      </section>
+
+    </main>
+  </div>
+
   <!-- ======================== SUBMISSION MODAL ======================== -->
   <div id="submitModal" class="modal-backdrop" hidden>
     <div class="modal-card">
@@ -138,6 +371,9 @@
       </div>
 
       <form id="submitForm">
+        <label class="field-label">Lecture ID</label>
+        <input class="field-input" type="text" id="modalLectureId" readonly>
+
         <label class="field-label">Course</label>
         <input class="field-input" type="text" id="modalCourse" readonly>
 
