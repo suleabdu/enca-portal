@@ -132,6 +132,15 @@ def admin_course_content():
         return jsonify({"success": False, "message": f"Could not load course content: {err}"}), 500
 
 
+@app.post("/api/admin/projects")
+def admin_projects():
+    try:
+        result = svc.get_admin_capstone_projects()
+        return jsonify(result)
+    except Exception as err:  # noqa: BLE001
+        return jsonify({"success": False, "message": f"Could not load student projects: {err}"}), 500
+
+
 @app.post("/api/admin/dashboard-summary")
 def admin_dashboard_summary():
     try:

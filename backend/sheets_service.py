@@ -18,6 +18,8 @@ Sheet contracts:
     Col B  Course
     Col D  Reg ID
     Col E  Student Name
+    Col F  Category         (e.g. "Capstone Project" — scanned by the admin
+                             Student Projects tab)
     Col G  Attendance       ("Present" / "Absent")
     Col H  Status               ("Issued" = assignment visible to student)
     Col I  Assignment Content
@@ -106,6 +108,7 @@ US_ROW_WIDTH = 4
 # "Attendance & Assignments" column indices (0-indexed)
 AA_LECTURE_ID = 0     # A  — links to Timetable Col A, and uniquely IDs each session's row
 AA_COURSE = 1         # B
+AA_CATEGORY = 5       # F  — e.g. "Capstone Project", used to spot capstone rows
 AA_REG_ID = 3         # D
 AA_NAME = 4           # E
 AA_ATTENDANCE = 6     # G
@@ -898,6 +901,37 @@ def _build_performance_headline(student, positive):
     return headline
 
 
+def _build_consistency_remark(student):
+    """
+    One-line automated remark for the leaderboard, tiered by Consistency %
+    (the same Aggregate Performance figure used elsewhere), naming whichever
+    specific factor — attendance, submissions, or scores — stands out most,
+    so two students at a similar percentage don't get an identical remark.
+    """
+    pct = student["aggregatePerformance"]
+    attendance_rate = student["attendanceRate"]
+    submission_rate = student["submissionRate"]
+    score_pct = student["scorePercentage"]
+
+    if pct >= 85:
+        tier = "Outstanding consistency"
+    elif pct >= 70:
+        tier = "Strong, dependable performance"
+    elif pct >= 50:
+        tier = "Moderate consistency, room to improve"
+    else:
+        tier = "Low consistency, needs support"
+
+    factors = [("attendance", attendance_rate), ("submissions", submission_rate), ("scores", score_pct)]
+
+    if pct >= 70:
+        best = max(factors, key=lambda f: f[1])
+        return f"{tier} — particularly strong in {best[0]} ({best[1]}%)."
+    else:
+        worst = min(factors, key=lambda f: f[1])
+        return f"{tier} — {worst[0]} is the main area to address ({worst[1]}%)."
+
+
 def get_admin_dashboard_summary():
     student_rows = _sheet_values(STUDENTS_SHEET_NAME)
     aa_rows = _sheet_values(ASSIGNMENTS_SHEET_NAME)
@@ -946,10 +980,89 @@ def get_admin_dashboard_summary():
             "headline": _build_performance_headline(bottom, positive=False),
         }
 
+    # Leaderboard + bar-chart data: every student with recorded activity,
+    # ranked by Consistency % (== Aggregate Performance), each with an
+    # automated remark. Students with zero recorded activity are left out
+    # of the ranking (nothing to compare yet) but counted separately.
+    leaderboard = sorted(
+        (
+            {
+                "id": s["id"],
+                "name": s["name"],
+                "course": s["course"],
+                "consistency": s["aggregatePerformance"],
+                "remark": _build_consistency_remark(s),
+            }
+            for s in eligible
+        ),
+        key=lambda s: s["consistency"],
+        reverse=True,
+    )
+
     return {
         "success": True,
         "totalStudents": total_students,
         "studentsWithData": len(eligible),
+        "studentsWithoutData": total_students - len(eligible),
         "topPerformer": top_card,
         "lowestPerformer": bottom_card,
+        "leaderboard": leaderboard,
     }
+
+
+# ---------------------------------------------------------------------------
+# Admin — Student Projects tab (capstone submissions)
+# ---------------------------------------------------------------------------
+
+def get_admin_capstone_projects():
+    """
+    Scans "Attendance & Assignments" Col F for the keyword "Capstone Project"
+    (case-insensitive substring match, so "Capstone Project - Final" still
+    matches), keeping only rows where Col H also reads "Issued". Returns
+    Reg ID / Name / Category (D, E, F) for the summary row, plus the full
+    detail set (D, E, F, H, I, J, K, M, N) for the "View Details" popup —
+    N (the submitted file) is returned separately as a direct link rather
+    than a plain text field, so the frontend can render it as an
+    "Open File" button instead of a dead-looking string.
+    """
+    rows = _sheet_values(ASSIGNMENTS_SHEET_NAME)
+
+    projects = []
+    for row in rows[1:]:
+        row = _padded(row, AA_ROW_WIDTH)
+        category = str(row[AA_CATEGORY]).strip()
+        status = str(row[AA_STATUS]).strip()
+
+        if "capstone project" not in category.lower():
+            continue
+        if status.lower() != "issued":
+            continue
+
+        reg_id = str(row[AA_REG_ID]).strip()
+        name = str(row[AA_NAME]).strip()
+        content = str(row[AA_CONTENT]).strip()
+        mark = str(row[AA_MARK]).strip()
+        score = str(row[AA_SCORE]).strip()
+        sub_date = str(row[AA_SUB_DATE]).strip()
+        sub_file = str(row[AA_SUB_FILE]).strip()
+        sub_status = str(row[AA_SUB_STATUS]).strip()
+
+        projects.append({
+            "regId": reg_id,
+            "name": name,
+            "category": category,
+            "submitted": sub_status.lower() == "submitted",
+            "details": {
+                "Reg ID": reg_id,
+                "Student Name": name,
+                "Category": category,
+                "Status": status,
+                "Assignment Content": content,
+                "Mark": mark or "—",
+                "Score": score or "Not graded yet",
+                "Submitted Date": sub_date or "—",
+            },
+            "fileUrl": sub_file or None,
+        })
+
+    return {"success": True, "projects": projects}
