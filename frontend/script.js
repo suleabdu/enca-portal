@@ -3,6 +3,10 @@
 // same-origin path with no CORS involved from the browser's point of view.
 const API_BASE = '/api';
 
+const SESSION_KEY = 'enca_session';
+const INACTIVITY_LIMIT_MS = 5 * 60 * 1000; // 5 minutes
+const AUTO_SYNC_INTERVAL_MS = 60 * 1000;   // background refresh every 60s
+
 // ---- Student state ----
 let currentStudent = null;
 let currentAssignments = [];
@@ -12,8 +16,20 @@ let currentCourseContent = [];
 // ---- Admin state ----
 let currentAdmin = null;
 let currentAdminCourseContent = [];
+let currentAdminStudents = [];
+let currentAdminProjects = [];
+
+// ---- Shared state ----
+let inactivityTimer = null;
+let toastTimer = null;
+let autoSyncTimer = null;
 
 document.addEventListener('DOMContentLoaded', function () {
+  wireUpEventListeners();
+  attemptSessionResync();
+});
+
+function wireUpEventListeners() {
   // Landing navigation
   document.getElementById('goStudentLogin').addEventListener('click', function () {
     showScreen('loginScreen');
@@ -30,11 +46,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Student login/logout
   document.getElementById('loginForm').addEventListener('submit', handleLogin);
-  document.getElementById('logoutBtn').addEventListener('click', handleLogout);
+  document.getElementById('logoutBtn').addEventListener('click', function () { handleLogout(); });
 
   // Admin login/logout
   document.getElementById('adminLoginForm').addEventListener('submit', handleAdminLogin);
-  document.getElementById('adminLogoutBtn').addEventListener('click', handleAdminLogout);
+  document.getElementById('adminLogoutBtn').addEventListener('click', function () { handleAdminLogout(); });
 
   // Submission modal
   document.getElementById('closeModalBtn').addEventListener('click', closeModal);
@@ -58,13 +74,196 @@ document.addEventListener('DOMContentLoaded', function () {
   document.querySelectorAll('.tab-btn[data-admin-tab]').forEach(function (btn) {
     btn.addEventListener('click', function () { activateAdminTab(btn.dataset.adminTab); });
   });
-});
+
+  // Filters — each re-renders from the full cached list, so background
+  // refreshes can re-apply whatever the user has typed
+  document.getElementById('filterAssignments').addEventListener('input', applyAssignmentsFilter);
+  document.getElementById('filterCourseContent').addEventListener('input', applyCourseContentFilter);
+  document.getElementById('filterAdminStudents').addEventListener('input', applyAdminStudentsFilter);
+  document.getElementById('filterAdminCourseContent').addEventListener('input', applyAdminCourseContentFilter);
+  document.getElementById('filterAdminProjects').addEventListener('input', applyAdminProjectsFilter);
+
+  // Manual "refresh now"
+  document.getElementById('studentSyncBtn').addEventListener('click', function () { syncStudentData(); });
+  document.getElementById('adminSyncBtn').addEventListener('click', function () { syncAdminData(); });
+
+  // Sync straight away when the user comes back to the tab
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) return;
+    if (currentStudent) syncStudentData();
+    else if (currentAdmin) syncAdminData();
+  });
+}
+
+const FILTER_FIELDS = {
+  assignments: ['course', 'lectureId', 'content'],
+  content: ['date', 'module', 'sessionFocus'],
+  students: ['id', 'name', 'email', 'course', 'cohort', 'status'],
+  projects: ['regId', 'name', 'category'],
+};
+
+function currentQuery(inputId) {
+  return document.getElementById(inputId).value.trim().toLowerCase();
+}
+
+function filterList(items, query, fields) {
+  if (!query) return items;
+  return items.filter(function (item) {
+    return fields.some(function (f) {
+      return (item[f] || '').toString().toLowerCase().includes(query);
+    });
+  });
+}
+
+function applyAssignmentsFilter() {
+  renderAssignments(filterList(currentAssignments, currentQuery('filterAssignments'), FILTER_FIELDS.assignments));
+}
+function applyCourseContentFilter() {
+  renderContentList('courseContentList', filterList(currentCourseContent, currentQuery('filterCourseContent'), FILTER_FIELDS.content));
+}
+function applyAdminStudentsFilter() {
+  renderStudentsTable(filterList(currentAdminStudents, currentQuery('filterAdminStudents'), FILTER_FIELDS.students));
+}
+function applyAdminCourseContentFilter() {
+  renderContentList('adminCourseContentList', filterList(currentAdminCourseContent, currentQuery('filterAdminCourseContent'), FILTER_FIELDS.content));
+}
+function applyAdminProjectsFilter() {
+  renderProjectsList(filterList(currentAdminProjects, currentQuery('filterAdminProjects'), FILTER_FIELDS.projects));
+}
+
+function appendEmptyNote(container) {
+  const note = document.createElement('div');
+  note.className = 'muted-text empty-note';
+  note.textContent = 'No matching results.';
+  container.appendChild(note);
+}
+
+// ======================================================================= //
+// Screens, session persistence, inactivity logout & background sync
+// ======================================================================= //
 
 function showScreen(id) {
-  ['landingScreen', 'loginScreen', 'adminLoginScreen', 'dashboardScreen', 'adminDashboardScreen']
+  ['bootScreen', 'landingScreen', 'loginScreen', 'adminLoginScreen', 'dashboardScreen', 'adminDashboardScreen']
     .forEach(function (screenId) {
       document.getElementById(screenId).hidden = screenId !== id;
     });
+}
+
+function showToast(message, type) {
+  const el = document.getElementById('toast');
+  el.textContent = message;
+  el.className = 'toast' + (type ? ' toast-' + type : '');
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { el.hidden = true; }, 4000);
+}
+
+function saveSession(data) {
+  try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(data)); } catch (err) { /* storage unavailable — session just won't persist */ }
+}
+
+function clearSession() {
+  try { sessionStorage.removeItem(SESSION_KEY); } catch (err) { /* ignore */ }
+}
+
+function readSession() {
+  try { return JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null'); } catch (err) { return null; }
+}
+
+async function verifySavedSession(saved) {
+  const endpoint = saved.type === 'admin' ? '/admin/login' : '/login';
+  const res = await fetch(`${API_BASE}${endpoint}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: saved.username, password: saved.password }),
+  });
+  return res.json();
+}
+
+async function attemptSessionResync() {
+  const saved = readSession();
+
+  if (!saved || (saved.type !== 'student' && saved.type !== 'admin')) {
+    showScreen('landingScreen');
+    return;
+  }
+
+  try {
+    const result = await verifySavedSession(saved);
+    if (result.success) {
+      if (saved.type === 'student') {
+        currentStudent = result.student;
+        showStudentDashboard();
+      } else {
+        currentAdmin = result.admin;
+        showAdminDashboard();
+      }
+      return;
+    }
+    // The server explicitly rejected the saved credentials — discard them.
+    clearSession();
+    showScreen('landingScreen');
+    showToast('Your session has expired. Please log in again.', 'error');
+  } catch (err) {
+    // Network problem (or a cold-starting backend) — keep the saved session
+    // so a reload can retry, but don't leave the user on a blank screen.
+    showScreen('landingScreen');
+    showToast("Couldn't reach the server to restore your session. Please try again.", 'error');
+  }
+}
+
+function startAutoSync() {
+  stopAutoSync();
+  autoSyncTimer = setInterval(function () {
+    if (document.hidden) return; // don't poll while the tab is in the background
+    if (currentStudent) syncStudentData();
+    else if (currentAdmin) syncAdminData();
+  }, AUTO_SYNC_INTERVAL_MS);
+}
+
+function stopAutoSync() {
+  clearInterval(autoSyncTimer);
+  autoSyncTimer = null;
+}
+
+function markSynced() {
+  const stamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  ['studentSyncTime', 'adminSyncTime'].forEach(function (id) {
+    document.getElementById(id).textContent = 'Synced ' + stamp;
+  });
+}
+
+function setSyncing(isSyncing) {
+  ['studentSyncBtn', 'adminSyncBtn'].forEach(function (id) {
+    document.getElementById(id).classList.toggle('syncing', isSyncing);
+  });
+}
+
+const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'];
+
+function resetInactivityTimer() {
+  clearTimeout(inactivityTimer);
+  inactivityTimer = setTimeout(handleInactivityTimeout, INACTIVITY_LIMIT_MS);
+}
+
+function startInactivityWatch() {
+  ACTIVITY_EVENTS.forEach(function (evt) { document.addEventListener(evt, resetInactivityTimer); });
+  resetInactivityTimer();
+}
+
+function stopInactivityWatch() {
+  clearTimeout(inactivityTimer);
+  ACTIVITY_EVENTS.forEach(function (evt) { document.removeEventListener(evt, resetInactivityTimer); });
+}
+
+function handleInactivityTimeout() {
+  const wasStudent = !!currentStudent;
+  const wasAdmin = !!currentAdmin;
+  if (wasStudent) handleLogout(true);
+  else if (wasAdmin) handleAdminLogout(true);
+  if (wasStudent || wasAdmin) {
+    showToast("You've been logged out after 5 minutes of inactivity.", 'info');
+  }
 }
 
 function initials(name) {
@@ -87,6 +286,13 @@ function performanceLabel(score) {
   if (score >= 70) return 'Good';
   if (score >= 50) return 'Fair';
   return 'Needs Improvement';
+}
+
+function performanceTierClass(score) {
+  if (score >= 85) return 'tier-excellent';
+  if (score >= 70) return 'tier-good';
+  if (score >= 50) return 'tier-fair';
+  return 'tier-low';
 }
 
 // ======================================================================= //
@@ -114,6 +320,7 @@ async function handleLogin(e) {
 
     if (result.success) {
       currentStudent = result.student;
+      saveSession({ type: 'student', username, password });
       showStudentDashboard();
     } else {
       errorBox.textContent = result.message || 'Login failed.';
@@ -128,23 +335,25 @@ async function handleLogin(e) {
   }
 }
 
-function handleLogout() {
+function handleLogout(silent) {
   currentStudent = null;
   currentAssignments = [];
   currentCourseContent = [];
+  stopInactivityWatch();
+  stopAutoSync();
+  clearSession();
   document.getElementById('username').value = '';
   document.getElementById('password').value = '';
   showScreen('landingScreen');
   activateTab('overviewTab');
+  if (!silent) { /* manual logout — no extra toast needed */ }
 }
 
 // ======================================================================= //
 // STUDENT: Dashboard
 // ======================================================================= //
 
-function showStudentDashboard() {
-  showScreen('dashboardScreen');
-
+function renderStudentProfile() {
   document.getElementById('welcomeName').textContent = currentStudent.name || 'Student';
   document.getElementById('infoRegId').textContent = currentStudent.regId || '—';
   document.getElementById('infoName').textContent = currentStudent.name || '—';
@@ -155,10 +364,48 @@ function showStudentDashboard() {
   document.getElementById('topbarAvatar').textContent = initials(currentStudent.name);
   document.getElementById('topbarName').textContent = currentStudent.name || 'Student';
   document.getElementById('topbarCourse').textContent = currentStudent.course || '—';
+}
 
+function showStudentDashboard() {
+  showScreen('dashboardScreen');
+  renderStudentProfile();
+
+  startInactivityWatch();
+  startAutoSync();
   loadAssignments();
   loadCourseContent();
   loadDashboardSummary();
+  markSynced();
+}
+
+// Pulls fresh data for the whole student dashboard: re-verifies the saved
+// login (so an admin changing this student's Status shows up immediately),
+// then reloads each tab without blanking anything already on screen.
+async function syncStudentData() {
+  if (!currentStudent) return;
+  setSyncing(true);
+
+  const saved = readSession();
+  if (saved && saved.type === 'student') {
+    try {
+      const result = await verifySavedSession(saved);
+      if (result.success) {
+        currentStudent = result.student;
+        renderStudentProfile();
+      } else {
+        setSyncing(false);
+        handleLogout(true);
+        showToast('Your session is no longer valid. Please log in again.', 'error');
+        return;
+      }
+    } catch (err) {
+      // Offline / server asleep — carry on with what's already on screen.
+    }
+  }
+
+  await Promise.all([loadAssignments(true), loadCourseContent(true), loadDashboardSummary()]);
+  markSynced();
+  setSyncing(false);
 }
 
 function activateTab(tabId) {
@@ -174,14 +421,16 @@ function activateTab(tabId) {
 // STUDENT: Assignments
 // ======================================================================= //
 
-async function loadAssignments() {
+async function loadAssignments(silent) {
   const statusEl = document.getElementById('assignmentsStatus');
   const listEl = document.getElementById('assignmentsList');
   const restrictedEl = document.getElementById('assignmentsRestricted');
-  restrictedEl.hidden = true;
-  statusEl.hidden = false;
-  statusEl.textContent = 'Loading assignments…';
-  listEl.innerHTML = '';
+  if (!silent) {
+    restrictedEl.hidden = true;
+    statusEl.hidden = false;
+    statusEl.textContent = 'Loading assignments…';
+    listEl.innerHTML = '';
+  }
 
   try {
     const res = await fetch(`${API_BASE}/assignments`, {
@@ -192,32 +441,38 @@ async function loadAssignments() {
     const result = await res.json();
 
     if (!result.success) {
-      statusEl.textContent = result.message || 'Could not load assignments.';
+      if (!silent) statusEl.textContent = result.message || 'Could not load assignments.';
       return;
     }
     if (result.restricted) {
+      currentAssignments = [];
+      listEl.innerHTML = '';
       statusEl.hidden = true;
       restrictedEl.hidden = false;
       restrictedEl.textContent = result.message;
       return;
     }
+    restrictedEl.hidden = true;
     currentAssignments = result.assignments || [];
     if (currentAssignments.length === 0) {
+      listEl.innerHTML = '';
+      statusEl.hidden = false;
       statusEl.textContent = 'No assignments have been issued yet.';
       return;
     }
     statusEl.hidden = true;
-    renderAssignments();
+    applyAssignmentsFilter();
   } catch (err) {
-    statusEl.textContent = 'Unexpected error: ' + err.message;
+    if (!silent) statusEl.textContent = 'Unexpected error: ' + err.message;
   }
 }
 
-function renderAssignments() {
+function renderAssignments(items) {
   const listEl = document.getElementById('assignmentsList');
   listEl.innerHTML = '';
+  if (items.length === 0) { appendEmptyNote(listEl); return; }
 
-  currentAssignments.forEach(function (item, index) {
+  items.forEach(function (item) {
     const row = document.createElement('div');
     row.className = 'assignment-item' + (item.submitted ? ' submitted' : '');
 
@@ -264,7 +519,7 @@ function renderAssignments() {
     row.appendChild(badge);
 
     if (!item.submitted) {
-      row.addEventListener('click', function () { openSubmitModal(index); });
+      row.addEventListener('click', function () { openSubmitModal(item); });
     }
 
     listEl.appendChild(row);
@@ -275,8 +530,8 @@ function renderAssignments() {
 // STUDENT: Submission modal
 // ======================================================================= //
 
-function openSubmitModal(index) {
-  activeAssignment = currentAssignments[index];
+function openSubmitModal(assignment) {
+  activeAssignment = assignment;
   document.getElementById('modalLectureId').value = activeAssignment.lectureId || '';
   document.getElementById('modalCourse').value = activeAssignment.course || '';
   document.getElementById('modalContent').textContent = activeAssignment.content || '';
@@ -382,7 +637,7 @@ async function loadDashboardSummary() {
 }
 
 // ======================================================================= //
-// Shared Course Content row builder (used by both student and admin views)
+// Shared Course Content row builder (used by student + admin content tabs)
 // ======================================================================= //
 
 function contentField(label, value, extraClass) {
@@ -399,7 +654,7 @@ function contentField(label, value, extraClass) {
   return wrap;
 }
 
-function buildContentRow(item, onView) {
+function buildContentRow(item) {
   const row = document.createElement('div');
   row.className = 'content-item' + (item.locked ? ' locked' : '');
 
@@ -428,7 +683,7 @@ function buildContentRow(item, onView) {
   actionBtn.textContent = item.locked ? 'Locked' : 'View';
   actionBtn.disabled = !!item.locked;
   if (!item.locked) {
-    actionBtn.addEventListener('click', onView);
+    actionBtn.addEventListener('click', function () { openDetailModal(item, 'Session Details'); });
   }
   actionField.appendChild(actionBtn);
   row.appendChild(actionField);
@@ -436,8 +691,17 @@ function buildContentRow(item, onView) {
   return row;
 }
 
-function openDetailModal(item) {
+function renderContentList(containerId, items) {
+  const listEl = document.getElementById(containerId);
+  listEl.innerHTML = '';
+  if (items.length === 0) { appendEmptyNote(listEl); return; }
+  items.forEach(function (item) { listEl.appendChild(buildContentRow(item)); });
+}
+
+function openDetailModal(item, title) {
   if (!item || item.locked || !item.details) return;
+
+  document.getElementById('detailModalTitle').textContent = title || 'Details';
 
   const fieldsEl = document.getElementById('detailFields');
   fieldsEl.innerHTML = '';
@@ -466,6 +730,16 @@ function openDetailModal(item) {
     videoBlock.hidden = true;
   }
 
+  const fileBlock = document.getElementById('detailFileBlock');
+  const fileLink = document.getElementById('detailFileLink');
+  if (item.fileUrl) {
+    fileLink.href = item.fileUrl;
+    fileBlock.hidden = false;
+  } else {
+    fileLink.href = '#';
+    fileBlock.hidden = true;
+  }
+
   document.getElementById('detailModal').hidden = false;
 }
 
@@ -478,14 +752,16 @@ function closeDetailModal() {
 // STUDENT: Course Content tab
 // ======================================================================= //
 
-async function loadCourseContent() {
+async function loadCourseContent(silent) {
   const statusEl = document.getElementById('courseContentStatus');
   const listEl = document.getElementById('courseContentList');
   const restrictedEl = document.getElementById('courseContentRestricted');
-  restrictedEl.hidden = true;
-  statusEl.hidden = false;
-  statusEl.textContent = 'Loading course content…';
-  listEl.innerHTML = '';
+  if (!silent) {
+    restrictedEl.hidden = true;
+    statusEl.hidden = false;
+    statusEl.textContent = 'Loading course content…';
+    listEl.innerHTML = '';
+  }
 
   try {
     const res = await fetch(`${API_BASE}/course-content`, {
@@ -496,27 +772,29 @@ async function loadCourseContent() {
     const result = await res.json();
 
     if (!result.success) {
-      statusEl.textContent = result.message || 'Could not load course content.';
+      if (!silent) statusEl.textContent = result.message || 'Could not load course content.';
       return;
     }
     if (result.restricted) {
+      currentCourseContent = [];
+      listEl.innerHTML = '';
       statusEl.hidden = true;
       restrictedEl.hidden = false;
       restrictedEl.textContent = result.message;
       return;
     }
+    restrictedEl.hidden = true;
     currentCourseContent = result.entries || [];
     if (currentCourseContent.length === 0) {
+      listEl.innerHTML = '';
+      statusEl.hidden = false;
       statusEl.textContent = 'No course content has been scheduled yet.';
       return;
     }
     statusEl.hidden = true;
-    listEl.innerHTML = '';
-    currentCourseContent.forEach(function (item) {
-      listEl.appendChild(buildContentRow(item, function () { openDetailModal(item); }));
-    });
+    applyCourseContentFilter();
   } catch (err) {
-    statusEl.textContent = 'Unexpected error: ' + err.message;
+    if (!silent) statusEl.textContent = 'Unexpected error: ' + err.message;
   }
 }
 
@@ -545,6 +823,7 @@ async function handleAdminLogin(e) {
 
     if (result.success) {
       currentAdmin = result.admin;
+      saveSession({ type: 'admin', username, password });
       showAdminDashboard();
     } else {
       errorBox.textContent = result.message || 'Login failed.';
@@ -559,13 +838,19 @@ async function handleAdminLogin(e) {
   }
 }
 
-function handleAdminLogout() {
+function handleAdminLogout(silent) {
   currentAdmin = null;
   currentAdminCourseContent = [];
+  currentAdminStudents = [];
+  currentAdminProjects = [];
+  stopInactivityWatch();
+  stopAutoSync();
+  clearSession();
   document.getElementById('adminUsername').value = '';
   document.getElementById('adminPassword').value = '';
   showScreen('landingScreen');
   activateAdminTab('adminOverviewTab');
+  if (!silent) { /* manual logout — no extra toast needed */ }
 }
 
 // ======================================================================= //
@@ -577,9 +862,46 @@ function showAdminDashboard() {
   document.getElementById('adminTopbarAvatar').textContent = initials(currentAdmin.name);
   document.getElementById('adminTopbarName').textContent = currentAdmin.name || 'Admin';
 
+  startInactivityWatch();
+  startAutoSync();
   loadAdminOverview();
   loadAdminStudents();
   loadAdminCourseContent();
+  loadAdminProjects();
+  markSynced();
+}
+
+async function syncAdminData() {
+  if (!currentAdmin) return;
+  setSyncing(true);
+
+  const saved = readSession();
+  if (saved && saved.type === 'admin') {
+    try {
+      const result = await verifySavedSession(saved);
+      if (result.success) {
+        currentAdmin = result.admin;
+      } else {
+        setSyncing(false);
+        handleAdminLogout(true);
+        showToast('Your session is no longer valid. Please log in again.', 'error');
+        return;
+      }
+    } catch (err) {
+      // Offline / server asleep — carry on with what's already on screen.
+    }
+  }
+
+  // Don't yank the Students table out from under an admin mid-edit.
+  const editingStatus = document.activeElement && document.activeElement.classList &&
+    document.activeElement.classList.contains('status-select');
+
+  const jobs = [loadAdminOverview(true), loadAdminCourseContent(true), loadAdminProjects(true)];
+  if (!editingStatus) jobs.push(loadAdminStudents(true));
+  await Promise.all(jobs);
+
+  markSynced();
+  setSyncing(false);
 }
 
 function activateAdminTab(tabId) {
@@ -592,22 +914,26 @@ function activateAdminTab(tabId) {
 }
 
 // ======================================================================= //
-// ADMIN: Overview analytics
+// ADMIN: Overview analytics (totals, top/bottom, bar chart, leaderboard)
 // ======================================================================= //
 
-async function loadAdminOverview() {
+async function loadAdminOverview(silent) {
   const statusEl = document.getElementById('adminOverviewStatus');
   const gridEl = document.getElementById('adminStatGrid');
-  statusEl.hidden = false;
-  statusEl.textContent = 'Loading cohort analytics…';
-  gridEl.hidden = true;
+  const analyticsEl = document.getElementById('cohortAnalyticsSection');
+  if (!silent) {
+    statusEl.hidden = false;
+    statusEl.textContent = 'Loading cohort analytics…';
+    gridEl.hidden = true;
+    analyticsEl.hidden = true;
+  }
 
   try {
     const res = await fetch(`${API_BASE}/admin/dashboard-summary`, { method: 'POST' });
     const result = await res.json();
 
     if (!result.success) {
-      statusEl.textContent = result.message || 'Could not load cohort analytics.';
+      if (!silent) statusEl.textContent = result.message || 'Could not load cohort analytics.';
       return;
     }
 
@@ -637,11 +963,83 @@ async function loadAdminOverview() {
       document.getElementById('bottomPerformerHeadline').textContent = 'Not enough recorded activity yet.';
     }
 
+    renderCohortBarChart(result.leaderboard || []);
+    renderLeaderboardTable(result.leaderboard || []);
+
+    const noDataNote = document.getElementById('noDataNote');
+    if (result.studentsWithoutData > 0) {
+      noDataNote.hidden = false;
+      noDataNote.textContent = `${result.studentsWithoutData} student(s) have no recorded activity yet and are excluded from the comparison below.`;
+    } else {
+      noDataNote.hidden = true;
+    }
+
     statusEl.hidden = true;
     gridEl.hidden = false;
+    analyticsEl.hidden = false;
   } catch (err) {
-    statusEl.textContent = 'Unexpected error: ' + err.message;
+    if (!silent) statusEl.textContent = 'Unexpected error: ' + err.message;
   }
+}
+
+function renderCohortBarChart(leaderboard) {
+  const chartEl = document.getElementById('cohortBarChart');
+  chartEl.innerHTML = '';
+
+  if (leaderboard.length === 0) {
+    chartEl.innerHTML = '<p class="muted-text">No recorded activity to compare yet.</p>';
+    return;
+  }
+
+  leaderboard.forEach(function (entry) {
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+
+    const label = document.createElement('div');
+    label.className = 'bar-label';
+    label.textContent = entry.name;
+    label.title = entry.name;
+
+    const track = document.createElement('div');
+    track.className = 'bar-track';
+    const fill = document.createElement('div');
+    fill.className = 'bar-fill ' + performanceTierClass(entry.consistency);
+    fill.style.width = Math.min(entry.consistency, 100) + '%';
+    track.appendChild(fill);
+
+    const value = document.createElement('div');
+    value.className = 'bar-value';
+    value.textContent = entry.consistency + '%';
+
+    row.appendChild(label);
+    row.appendChild(track);
+    row.appendChild(value);
+    chartEl.appendChild(row);
+  });
+}
+
+function renderLeaderboardTable(leaderboard) {
+  const bodyEl = document.getElementById('leaderboardTableBody');
+  bodyEl.innerHTML = '';
+
+  leaderboard.forEach(function (entry) {
+    const tr = document.createElement('tr');
+
+    const nameTd = document.createElement('td');
+    nameTd.textContent = entry.name;
+
+    const consistencyTd = document.createElement('td');
+    consistencyTd.textContent = entry.consistency + '%';
+
+    const remarkTd = document.createElement('td');
+    remarkTd.className = 'remark-cell';
+    remarkTd.textContent = entry.remark;
+
+    tr.appendChild(nameTd);
+    tr.appendChild(consistencyTd);
+    tr.appendChild(remarkTd);
+    bodyEl.appendChild(tr);
+  });
 }
 
 // ======================================================================= //
@@ -650,38 +1048,52 @@ async function loadAdminOverview() {
 
 const STATUS_PRESETS = ['Admitted', 'Pending', 'Suspended', 'Withdrawn', 'Graduated'];
 
-async function loadAdminStudents() {
+async function loadAdminStudents(silent) {
   const statusEl = document.getElementById('adminStudentsStatus');
-  const tableEl = document.getElementById('adminStudentsTable');
-  const bodyEl = document.getElementById('adminStudentsTableBody');
-  statusEl.hidden = false;
-  statusEl.textContent = 'Loading students…';
-  tableEl.hidden = true;
-  bodyEl.innerHTML = '';
+  if (!silent) {
+    statusEl.hidden = false;
+    statusEl.textContent = 'Loading students…';
+    document.getElementById('adminStudentsTable').hidden = true;
+  }
 
   try {
     const res = await fetch(`${API_BASE}/admin/students`, { method: 'POST' });
     const result = await res.json();
 
     if (!result.success) {
-      statusEl.textContent = result.message || 'Could not load students.';
+      if (!silent) statusEl.textContent = result.message || 'Could not load students.';
       return;
     }
-    const students = result.students || [];
-    if (students.length === 0) {
+    currentAdminStudents = result.students || [];
+    if (currentAdminStudents.length === 0) {
+      statusEl.hidden = false;
       statusEl.textContent = 'No students found.';
       return;
     }
-
-    students.forEach(function (student) {
-      bodyEl.appendChild(buildStudentRow(student));
-    });
-
     statusEl.hidden = true;
-    tableEl.hidden = false;
+    applyAdminStudentsFilter();
   } catch (err) {
-    statusEl.textContent = 'Unexpected error: ' + err.message;
+    if (!silent) statusEl.textContent = 'Unexpected error: ' + err.message;
   }
+}
+
+function renderStudentsTable(students) {
+  const tableEl = document.getElementById('adminStudentsTable');
+  const bodyEl = document.getElementById('adminStudentsTableBody');
+  bodyEl.innerHTML = '';
+
+  if (students.length === 0) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 10;
+    td.className = 'muted-text';
+    td.textContent = 'No matching results.';
+    tr.appendChild(td);
+    bodyEl.appendChild(tr);
+  } else {
+    students.forEach(function (student) { bodyEl.appendChild(buildStudentRow(student)); });
+  }
+  tableEl.hidden = false;
 }
 
 function buildStudentRow(student) {
@@ -721,7 +1133,6 @@ function buildStudentRow(student) {
 }
 
 async function updateStudentStatus(studentId, newStatus, selectEl) {
-  const statusEl = document.getElementById('adminStudentsStatus');
   selectEl.disabled = true;
 
   try {
@@ -734,16 +1145,14 @@ async function updateStudentStatus(studentId, newStatus, selectEl) {
 
     if (result.success) {
       selectEl.className = 'status-select ' + (newStatus.toLowerCase() === 'admitted' ? 'status-admitted' : 'status-other');
-      statusEl.hidden = false;
-      statusEl.textContent = `Updated ${studentId} to "${newStatus}".`;
-      setTimeout(function () { statusEl.hidden = true; }, 2500);
+      const student = currentAdminStudents.find(function (s) { return s.id === studentId; });
+      if (student) student.status = newStatus;
+      showToast(`Updated ${studentId}'s status to "${newStatus}".`, 'success');
     } else {
-      statusEl.hidden = false;
-      statusEl.textContent = result.message || 'Could not update status.';
+      showToast(result.message || 'Could not update status.', 'error');
     }
   } catch (err) {
-    statusEl.hidden = false;
-    statusEl.textContent = 'Unexpected error: ' + err.message;
+    showToast('Unexpected error: ' + err.message, 'error');
   } finally {
     selectEl.disabled = false;
   }
@@ -753,32 +1162,95 @@ async function updateStudentStatus(studentId, newStatus, selectEl) {
 // ADMIN: Course Content tab
 // ======================================================================= //
 
-async function loadAdminCourseContent() {
+async function loadAdminCourseContent(silent) {
   const statusEl = document.getElementById('adminCourseContentStatus');
-  const listEl = document.getElementById('adminCourseContentList');
-  statusEl.hidden = false;
-  statusEl.textContent = 'Loading course content…';
-  listEl.innerHTML = '';
+  if (!silent) {
+    statusEl.hidden = false;
+    statusEl.textContent = 'Loading course content…';
+    document.getElementById('adminCourseContentList').innerHTML = '';
+  }
 
   try {
     const res = await fetch(`${API_BASE}/admin/course-content`, { method: 'POST' });
     const result = await res.json();
 
     if (!result.success) {
-      statusEl.textContent = result.message || 'Could not load course content.';
+      if (!silent) statusEl.textContent = result.message || 'Could not load course content.';
       return;
     }
     currentAdminCourseContent = result.entries || [];
     if (currentAdminCourseContent.length === 0) {
+      document.getElementById('adminCourseContentList').innerHTML = '';
+      statusEl.hidden = false;
       statusEl.textContent = 'No course content has been scheduled yet.';
       return;
     }
     statusEl.hidden = true;
-    listEl.innerHTML = '';
-    currentAdminCourseContent.forEach(function (item) {
-      listEl.appendChild(buildContentRow(item, function () { openDetailModal(item); }));
-    });
+    applyAdminCourseContentFilter();
   } catch (err) {
-    statusEl.textContent = 'Unexpected error: ' + err.message;
+    if (!silent) statusEl.textContent = 'Unexpected error: ' + err.message;
   }
+}
+
+// ======================================================================= //
+// ADMIN: Student Projects tab (capstone submissions)
+// ======================================================================= //
+
+async function loadAdminProjects(silent) {
+  const statusEl = document.getElementById('adminProjectsStatus');
+  if (!silent) {
+    statusEl.hidden = false;
+    statusEl.textContent = 'Loading student projects…';
+    document.getElementById('adminProjectsList').innerHTML = '';
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/admin/projects`, { method: 'POST' });
+    const result = await res.json();
+
+    if (!result.success) {
+      if (!silent) statusEl.textContent = result.message || 'Could not load student projects.';
+      return;
+    }
+    currentAdminProjects = result.projects || [];
+    if (currentAdminProjects.length === 0) {
+      document.getElementById('adminProjectsList').innerHTML = '';
+      statusEl.hidden = false;
+      statusEl.textContent = 'No capstone project submissions found yet.';
+      return;
+    }
+    statusEl.hidden = true;
+    applyAdminProjectsFilter();
+  } catch (err) {
+    if (!silent) statusEl.textContent = 'Unexpected error: ' + err.message;
+  }
+}
+
+function renderProjectsList(projects) {
+  const listEl = document.getElementById('adminProjectsList');
+  listEl.innerHTML = '';
+  if (projects.length === 0) { appendEmptyNote(listEl); return; }
+
+  projects.forEach(function (item) {
+    const row = document.createElement('div');
+    row.className = 'content-item';
+
+    row.appendChild(contentField('Reg ID', item.regId));
+    row.appendChild(contentField('Name', item.name, 'course-title'));
+    row.appendChild(contentField('Category', item.category));
+
+    const actionField = document.createElement('div');
+    actionField.className = 'content-field';
+    const actionBtn = document.createElement('button');
+    actionBtn.type = 'button';
+    actionBtn.className = 'btn btn-primary';
+    actionBtn.textContent = 'View Details';
+    actionBtn.addEventListener('click', function () {
+      openDetailModal(item, `${item.name} — ${item.category}`);
+    });
+    actionField.appendChild(actionBtn);
+    row.appendChild(actionField);
+
+    listEl.appendChild(row);
+  });
 }

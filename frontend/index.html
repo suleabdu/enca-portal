@@ -8,8 +8,17 @@
 </head>
 <body>
 
+  <!-- ============================= BOOT SCREEN ============================= -->
+  <div id="bootScreen" class="screen boot-screen">
+    <div class="boot-spinner" aria-hidden="true"></div>
+    <div class="boot-text">Loading ENCA Digital Training Portal…</div>
+  </div>
+
+  <!-- ============================= TOAST NOTIFICATION ============================= -->
+  <div id="toast" class="toast" hidden></div>
+
   <!-- ============================= LANDING SCREEN ============================= -->
-  <div id="landingScreen" class="screen landing-screen">
+  <div id="landingScreen" class="screen landing-screen" hidden>
     <div class="landing-card">
       <div class="brand">
         <div class="brand-logo" aria-hidden="true">
@@ -115,6 +124,10 @@
     <header class="topbar">
       <div class="topbar-brand">ENCA Digital Training Portal</div>
       <div class="topbar-user">
+        <button type="button" class="sync-btn" id="studentSyncBtn" title="Refresh now">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 11a8 8 0 0 0-14.9-3M4 5v4h4M4 13a8 8 0 0 0 14.9 3M20 19v-4h-4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span id="studentSyncTime">Synced</span>
+        </button>
         <div class="avatar" id="topbarAvatar">S</div>
         <div class="topbar-user-text">
           <div class="topbar-user-name" id="topbarName">Student</div>
@@ -143,7 +156,13 @@
 
       <!-- ---------- Overview / Profile tab ---------- -->
       <section id="overviewTab" class="tab-panel active">
-        <h1 class="page-title">Welcome, <span id="welcomeName">Student</span></h1>
+        <div class="page-title-row">
+          <h1 class="page-title">Welcome, <span id="welcomeName">Student</span></h1>
+          <div class="page-title-status">
+            <span class="status-pill-label">Admission Status</span>
+            <span class="status-pill" id="infoStatusPill">—</span>
+          </div>
+        </div>
         <div class="card-grid">
           <div class="info-card">
             <div class="info-label">Reg ID</div>
@@ -160,10 +179,6 @@
           <div class="info-card">
             <div class="info-label">Course</div>
             <div class="info-value" id="infoCourse">—</div>
-          </div>
-          <div class="info-card">
-            <div class="info-label">Admission Status</div>
-            <div class="info-value" id="infoStatus"><span class="status-pill" id="infoStatusPill">—</span></div>
           </div>
         </div>
 
@@ -231,6 +246,10 @@
       <section id="assignmentsTab" class="tab-panel">
         <h1 class="page-title">Your Assignments</h1>
         <div id="assignmentsRestricted" class="restricted-banner" hidden></div>
+        <div class="filter-bar">
+          <svg class="filter-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5" stroke-linecap="round"/></svg>
+          <input type="text" class="filter-input" id="filterAssignments" placeholder="Filter by course, lecture ID, or keyword…">
+        </div>
         <div id="assignmentsStatus" class="muted-text">Loading assignments…</div>
         <div id="assignmentsList" class="assignment-list"></div>
       </section>
@@ -239,6 +258,10 @@
       <section id="courseContentTab" class="tab-panel">
         <h1 class="page-title">Course Content</h1>
         <div id="courseContentRestricted" class="restricted-banner" hidden></div>
+        <div class="filter-bar">
+          <svg class="filter-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5" stroke-linecap="round"/></svg>
+          <input type="text" class="filter-input" id="filterCourseContent" placeholder="Filter by date, module, or session focus…">
+        </div>
 
         <div class="content-table-head">
           <div>Date</div>
@@ -262,6 +285,10 @@
     <header class="topbar">
       <div class="topbar-brand">ENCA Admin Console</div>
       <div class="topbar-user">
+        <button type="button" class="sync-btn" id="adminSyncBtn" title="Refresh now">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 11a8 8 0 0 0-14.9-3M4 5v4h4M4 13a8 8 0 0 0 14.9 3M20 19v-4h-4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span id="adminSyncTime">Synced</span>
+        </button>
         <div class="avatar avatar-admin" id="adminTopbarAvatar">A</div>
         <div class="topbar-user-text">
           <div class="topbar-user-name" id="adminTopbarName">Admin</div>
@@ -283,6 +310,10 @@
       <button class="tab-btn" data-admin-tab="adminCourseContentTab">
         <svg class="tab-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l6-3.5-6-3.5Z" fill="currentColor" stroke="none"/></svg>
         Course Content
+      </button>
+      <button class="tab-btn" data-admin-tab="adminProjectsTab">
+        <svg class="tab-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"/><path d="M15 4v5h5"/></svg>
+        Student Projects
       </button>
     </nav>
 
@@ -323,11 +354,31 @@
             <p class="performer-headline" id="bottomPerformerHeadline">Not enough data yet.</p>
           </div>
         </div>
+
+        <div id="cohortAnalyticsSection" hidden>
+          <h2 class="section-subtitle">Cohort Performance Comparison</h2>
+          <p class="muted-text" id="noDataNote" hidden></p>
+          <div class="bar-chart" id="cohortBarChart"></div>
+
+          <h2 class="section-subtitle section-subtitle-spaced">Leaderboard</h2>
+          <div class="admin-table-wrapper">
+            <table class="admin-table leaderboard-table">
+              <thead>
+                <tr><th>Student Name</th><th>Consistency %</th><th>Remark</th></tr>
+              </thead>
+              <tbody id="leaderboardTableBody"></tbody>
+            </table>
+          </div>
+        </div>
       </section>
 
       <!-- ---------- Admin Students tab ---------- -->
       <section id="adminStudentsTab" class="admin-tab-panel">
         <h1 class="page-title">Students</h1>
+        <div class="filter-bar">
+          <svg class="filter-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5" stroke-linecap="round"/></svg>
+          <input type="text" class="filter-input" id="filterAdminStudents" placeholder="Filter by name, ID, email, course, cohort, or status…">
+        </div>
         <div id="adminStudentsStatus" class="muted-text">Loading students…</div>
         <div class="admin-table-wrapper">
           <table class="admin-table" id="adminStudentsTable" hidden>
@@ -345,6 +396,10 @@
       <!-- ---------- Admin Course Content tab ---------- -->
       <section id="adminCourseContentTab" class="admin-tab-panel">
         <h1 class="page-title">Course Content</h1>
+        <div class="filter-bar">
+          <svg class="filter-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5" stroke-linecap="round"/></svg>
+          <input type="text" class="filter-input" id="filterAdminCourseContent" placeholder="Filter by date, module, or session focus…">
+        </div>
 
         <div class="content-table-head">
           <div>Date</div>
@@ -357,6 +412,26 @@
 
         <div id="adminCourseContentStatus" class="muted-text">Loading course content…</div>
         <div id="adminCourseContentList" class="content-list"></div>
+      </section>
+
+      <!-- ---------- Admin Student Projects tab ---------- -->
+      <section id="adminProjectsTab" class="admin-tab-panel">
+        <h1 class="page-title">Student Projects</h1>
+        <p class="muted-text">Capstone project submissions, detected from "Attendance &amp; Assignments" (Category = "Capstone Project", Status = "Issued").</p>
+        <div class="filter-bar">
+          <svg class="filter-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5" stroke-linecap="round"/></svg>
+          <input type="text" class="filter-input" id="filterAdminProjects" placeholder="Filter by student name, Reg ID, or category…">
+        </div>
+
+        <div class="content-table-head projects-table-head">
+          <div>Reg ID</div>
+          <div>Name</div>
+          <div>Category</div>
+          <div>Action</div>
+        </div>
+
+        <div id="adminProjectsStatus" class="muted-text">Loading student projects…</div>
+        <div id="adminProjectsList" class="content-list"></div>
       </section>
 
     </main>
@@ -399,7 +474,7 @@
   <div id="detailModal" class="modal-backdrop" hidden>
     <div class="modal-card detail-card">
       <div class="modal-header">
-        <h2>Session Details</h2>
+        <h2 id="detailModalTitle">Session Details</h2>
         <button id="closeDetailModalBtn" class="modal-close" aria-label="Close">&times;</button>
       </div>
 
@@ -410,6 +485,9 @@
           <iframe id="detailVideoFrame" src="" title="Learning resource video"
             frameborder="0" allowfullscreen></iframe>
         </div>
+      </div>
+      <div id="detailFileBlock" class="detail-file-block" hidden>
+        <a id="detailFileLink" class="btn btn-primary btn-block" href="#" target="_blank" rel="noopener">Open Submitted File</a>
       </div>
     </div>
   </div>
